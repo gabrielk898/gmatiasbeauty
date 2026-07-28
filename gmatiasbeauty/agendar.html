@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agendar — gmatiasbeauty</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="header-inner">
+        <div class="brand">
+          <span class="brand-mark">G</span>
+          <span>gmatias<span class="brand-accent">beauty</span></span>
+        </div>
+        <nav class="nav">
+          <a href="index.html">Início</a>
+          <a href="agendar.html" class="active">Agendar</a>
+          <a href="#" id="nav-entrar">Entrar</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main">
+      <div id="stepper" class="stepper"></div>
+
+      <!-- PASSO 1 — SERVIÇO -->
+      <section class="step-panel" data-step="1">
+        <div class="step-header">
+          <p class="step-eyebrow">Passo 1</p>
+          <h2>Escolha o Serviço</h2>
+          <p class="step-sub">Selecione o procedimento desejado</p>
+        </div>
+        <div class="container">
+          <div id="service-list" class="service-list">
+            <!-- preenchido via booking.js -->
+          </div>
+          <p id="service-empty" class="empty-state hidden">
+            Nenhum serviço disponível no momento.
+          </p>
+          <div class="step-nav">
+            <button class="btn btn-primary btn-block" id="step1-continue" disabled>
+              Continuar
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- PASSO 2 — DATA -->
+      <section class="step-panel hidden" data-step="2">
+        <div class="step-header">
+          <p class="step-eyebrow">Passo 2</p>
+          <h2>Escolha a Data</h2>
+          <p class="step-sub">Selecione uma data disponível</p>
+        </div>
+        <div class="container">
+          <div class="card">
+            <div class="calendar-nav">
+              <button id="cal-prev" aria-label="Mês anterior">‹</button>
+              <strong id="cal-label" class="font-display"></strong>
+              <button id="cal-next" aria-label="Próximo mês">›</button>
+            </div>
+            <div class="calendar-grid" id="calendar-grid">
+              <!-- preenchido via booking.js -->
+            </div>
+            <div class="calendar-legend">
+              <span><span class="legend-dot today"></span>Hoje</span>
+              <span><span class="legend-dot unavailable"></span>Indisponível</span>
+              <span><span class="legend-dot selected"></span>Selecionado</span>
+            </div>
+          </div>
+          <div class="step-nav">
+            <button class="btn btn-secondary" id="step2-back">Voltar</button>
+            <button class="btn btn-primary" id="step2-continue" disabled>Continuar</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- PASSO 3 — HORÁRIO -->
+      <section class="step-panel hidden" data-step="3">
+        <div class="step-header">
+          <p class="step-eyebrow">Passo 3</p>
+          <h2>Escolha o Horário</h2>
+          <p class="step-sub accent" id="selected-date-label"></p>
+        </div>
+        <div class="container">
+          <div class="card" id="slots-card">
+            <p id="slots-loading" class="empty-state">Carregando horários…</p>
+            <div id="slots-container" class="hidden"></div>
+          </div>
+          <div class="step-nav">
+            <button class="btn btn-secondary" id="step3-back">Voltar</button>
+            <button class="btn btn-primary" id="step3-continue" disabled>Continuar</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- PASSO 4 — DADOS (guest checkout, sem exigir login) -->
+      <section class="step-panel hidden" data-step="4">
+        <div class="step-header">
+          <p class="step-eyebrow">Passo 4</p>
+          <h2>Seus Dados</h2>
+          <p class="step-sub">Precisamos de algumas informações</p>
+        </div>
+        <div class="container">
+          <div class="card summary-card">
+            <p class="summary-label">Resumo do Agendamento</p>
+            <div class="summary-row">
+              <h3 id="summary-service-name"></h3>
+              <span class="summary-price" id="summary-service-price"></span>
+            </div>
+            <div class="summary-datetime">
+              <span class="row">📅 <span id="summary-date"></span></span>
+              <span class="row">🕐 <span id="summary-time"></span></span>
+            </div>
+          </div>
+
+          <div class="card form-card">
+            <form id="checkout-form">
+              <div class="form-field">
+                <label for="customer-name">Nome completo</label>
+                <input type="text" id="customer-name" name="name" required autocomplete="name" />
+              </div>
+              <div class="form-field">
+                <label for="customer-phone">Telefone / WhatsApp</label>
+                <input type="tel" id="customer-phone" name="phone" required autocomplete="tel"
+                       placeholder="(41) 90000-0000" />
+              </div>
+              <div class="form-field">
+                <label for="customer-email">E-mail (opcional)</label>
+                <input type="email" id="customer-email" name="email" autocomplete="email" />
+                <p class="form-hint">Enviamos a confirmação por e-mail, se preferir.</p>
+              </div>
+              <p id="form-error" class="form-error hidden"></p>
+            </form>
+          </div>
+
+          <div class="step-nav">
+            <button class="btn btn-secondary" id="step4-back">Voltar</button>
+            <button class="btn btn-primary" id="step4-continue">
+              <span id="step4-continue-label">Confirmar Agendamento</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- PASSO 5 — CONFIRMAÇÃO -->
+      <section class="step-panel hidden" data-step="5">
+        <div class="container">
+          <div class="confirmation">
+            <div class="confirmation-icon">✓</div>
+            <h2>Agendamento confirmado!</h2>
+            <p class="step-sub" style="margin-top: 12px;">
+              Enviamos os detalhes para o seu contato. Chegue com 10 minutos
+              de antecedência.
+            </p>
+
+            <div class="card summary-card" style="margin-top: 32px; text-align: left;">
+              <p class="summary-label">Detalhes</p>
+              <div class="summary-row">
+                <h3 id="confirm-service-name"></h3>
+                <span class="summary-price" id="confirm-service-price"></span>
+              </div>
+              <div class="summary-datetime">
+                <span class="row">📅 <span id="confirm-date"></span></span>
+                <span class="row">🕐 <span id="confirm-time"></span></span>
+              </div>
+            </div>
+
+            <div class="account-offer" id="account-offer">
+              <span>✨</span>
+              <div style="flex:1; text-align:left;">
+                <strong>Quer acompanhar seus agendamentos?</strong>
+                <p style="margin-top: 4px;">
+                  Crie uma conta rapidinho (opcional) para ver seu histórico
+                  e remarcar mais fácil da próxima vez.
+                </p>
+                <button class="btn btn-secondary" id="create-account-btn" style="margin-top: 12px;">
+                  Criar conta
+                </button>
+              </div>
+            </div>
+
+            <div style="margin-top: 32px;">
+              <a href="index.html" class="btn btn-primary">Voltar para o início</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>© 2026 gmatiasbeauty. Todos os direitos reservados.</p>
+      <p class="lock">🔒 Acesso Restrito</p>
+    </footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/auth-modal.js"></script>
+  <script src="js/booking.js"></script>
+</body>
+</html>

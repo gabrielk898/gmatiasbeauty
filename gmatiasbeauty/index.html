@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gmatiasbeauty</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="header-inner">
+        <div class="brand">
+          <span class="brand-mark">G</span>
+          <span>gmatias<span class="brand-accent">beauty</span></span>
+        </div>
+        <nav class="nav">
+          <a href="index.html" class="active">Início</a>
+          <a href="agendar.html">Agendar</a>
+          <a href="#" id="nav-entrar">Entrar</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="hero">
+        <h1>Beleza que <span class="brand-accent">realça</span> sua essência</h1>
+        <p class="subtitle">
+          Agende seu horário com especialistas em um ambiente pensado
+          para o seu bem-estar e conforto.
+        </p>
+        <div style="margin-top: 32px;">
+          <a href="agendar.html" class="btn btn-primary">Agendar Agora</a>
+        </div>
+      </section>
+
+      <section class="services-section">
+        <h2>Nossos Serviços</h2>
+        <div id="services-grid" class="services-grid">
+          <!-- Preenchido dinamicamente via js/home.js -->
+        </div>
+        <p id="services-empty" class="empty-state hidden">
+          Nenhum serviço disponível no momento.
+        </p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>© 2026 gmatiasbeauty. Todos os direitos reservados.</p>
+      <p class="lock">🔒 Acesso Restrito</p>
+    </footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/auth-modal.js"></script>
+  <script src="js/home.js"></script>
+</body>
+</html>
