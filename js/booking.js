@@ -391,7 +391,7 @@ async function submitBooking() {
     status: "confirmed",
   };
 
-  const { data, error } = await supabaseClient.from("appointments").insert(payload).select().single();
+  const { error } = await supabaseClient.from("appointments").insert(payload);
 
   continueBtn.disabled = false;
   label.textContent = "Confirmar Agendamento";
@@ -410,7 +410,6 @@ async function submitBooking() {
     return;
   }
 
-  state.lastAppointment = data;
   fillConfirmation();
   goToStep(5);
 }

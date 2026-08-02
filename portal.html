@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>gmatiasbeauty</title>
+  <title>Minha Conta — gmatiasbeauty</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css" />
@@ -17,37 +17,17 @@
           <span>gmatias<span class="brand-accent">beauty</span></span>
         </div>
         <nav class="nav">
-          <a href="index.html" class="active">Início</a>
+          <a href="index.html">Início</a>
           <a href="servicos.html">Serviços</a>
           <a href="agendar.html">Agendar</a>
-          <a href="portal.html" id="nav-entrar">Entrar</a>
+          <a href="portal.html" class="active" id="nav-entrar">Entrar</a>
         </nav>
       </div>
     </header>
 
     <main class="main">
-      <section class="hero">
-        <h1>Beleza que <span class="brand-accent">realça</span> sua essência</h1>
-        <p class="subtitle">
-          Agende seu horário com especialistas em um ambiente pensado
-          para o seu bem-estar e conforto.
-        </p>
-        <div style="margin-top: 32px;">
-          <a href="agendar.html" class="btn btn-primary">Agendar Agora</a>
-        </div>
-      </section>
-
-      <section class="gallery-section">
-        <h2>Resultados Reais</h2>
-        <p class="section-sub">
-          Alguns dos procedimentos realizados por aqui — antes e depois.
-        </p>
-        <div id="gallery-grid" class="gallery-grid">
-          <!-- preenchido via js/gallery.js -->
-        </div>
-        <div style="margin-top: 40px;">
-          <a href="servicos.html" class="btn btn-secondary">Ver todos os serviços</a>
-        </div>
+      <section class="portal-section" id="portal-content">
+        <!-- preenchido via js/portal.js -->
       </section>
     </main>
 
@@ -59,7 +39,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase-client.js"></script>
-  <script src="js/nav-auth.js"></script>
-  <script src="js/gallery.js"></script>
+  <script src="js/portal.js"></script>
 </body>
 </html>
