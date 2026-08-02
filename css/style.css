@@ -1032,6 +1032,38 @@ button {
   margin-top: 2px;
 }
 
+/* ---------- Banner de promoções (visível ao cliente) ---------- */
+.promo-banner {
+  max-width: 900px;
+  margin: 0 auto 40px;
+  padding: 0 24px;
+}
+
+.promo-card {
+  background: linear-gradient(135deg, var(--color-gold) 0%, var(--color-gold-dark) 100%);
+  color: #fff;
+  border-radius: var(--radius-md);
+  padding: 20px 26px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.promo-card .promo-icon { font-size: 1.4rem; }
+
+.promo-card .promo-text h3 {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.promo-card .promo-text p {
+  font-size: 0.86rem;
+  opacity: 0.92;
+  margin-top: 2px;
+}
+
 /* ---------- Painel Administrativo ---------- */
 .admin-page {
   display: flex;
