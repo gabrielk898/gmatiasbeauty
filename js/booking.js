@@ -14,6 +14,7 @@ const state = {
   services: [],
   selectedService: null,
   businessHours: {}, // weekday(0-6) -> { open_time, close_time, is_closed }
+  scheduleBlocks: [], // [{block_date, start_time, end_time, reason}]
   calYear: new Date().getFullYear(),
   calMonth: new Date().getMonth(),
   selectedDate: null, // "YYYY-MM-DD"
@@ -152,6 +153,21 @@ async function loadBusinessHours() {
   });
 }
 
+async function loadScheduleBlocks() {
+  const { data, error } = await supabaseClient.from("schedule_blocks").select("*");
+  if (error) {
+    console.error(error);
+    return;
+  }
+  state.scheduleBlocks = data || [];
+}
+
+function isDateFullyBlocked(iso) {
+  return state.scheduleBlocks.some(
+    (b) => b.block_date === iso && !b.start_time && !b.end_time
+  );
+}
+
 function renderCalendar() {
   const label = document.getElementById("cal-label");
   const grid = document.getElementById("calendar-grid");
@@ -179,7 +195,7 @@ function renderCalendar() {
     const isPast = iso < today;
     const isToday = iso === today;
     const hours = state.businessHours[weekday];
-    const isClosed = !hours || hours.is_closed;
+    const isClosed = !hours || hours.is_closed || isDateFullyBlocked(iso);
     const isSelectable = !isPast && !isClosed;
 
     let cls = "calendar-day";
@@ -271,10 +287,14 @@ function renderSlots() {
   const weekday = new Date(y, m - 1, d).getDay();
   const hours = state.businessHours[weekday];
 
-  if (!hours || hours.is_closed) {
+  if (!hours || hours.is_closed || isDateFullyBlocked(state.selectedDate)) {
     container.innerHTML = `<p class="empty-state">Não atendemos nesse dia. Volte e escolha outra data.</p>`;
     return;
   }
+
+  const dateBlocks = state.scheduleBlocks.filter(
+    (b) => b.block_date === state.selectedDate && b.start_time && b.end_time
+  );
 
   const duration = state.selectedService.duration_minutes;
   const openMin = timeToMinutes(hours.open_time);
@@ -294,7 +314,13 @@ function renderSlots() {
       return start < bEnd && end > bStart; // sobreposição
     });
 
-    const slot = { start: startStr, end: endStr, isBooked };
+    const isBlocked = dateBlocks.some((b) => {
+      const bStart = timeToMinutes(b.start_time);
+      const bEnd = timeToMinutes(b.end_time);
+      return start < bEnd && end > bStart;
+    });
+
+    const slot = { start: startStr, end: endStr, isBooked: isBooked || isBlocked };
     if (start < 12 * 60) morning.push(slot);
     else afternoon.push(slot);
   }
@@ -488,5 +514,5 @@ document.getElementById("create-account-btn").addEventListener("click", () => {
 // ---------------------------------------------------------
 (async function init() {
   renderStepper();
-  await Promise.all([loadServices(), loadBusinessHours()]);
+  await Promise.all([loadServices(), loadBusinessHours(), loadScheduleBlocks()]);
 })();

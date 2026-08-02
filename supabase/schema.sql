@@ -49,8 +49,11 @@ create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
   phone text,
+  is_admin boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+alter table profiles add column if not exists is_admin boolean not null default false;
 
 -- Cria o perfil automaticamente quando alguém cria uma conta
 -- (pega nome/telefone que foram enviados no cadastro, se houver)
@@ -88,9 +91,17 @@ create table if not exists appointments (
   start_time time not null,
   end_time time not null,
   status text not null default 'confirmed'
-    check (status in ('confirmed', 'cancelled', 'completed')),
+    check (status in ('confirmed', 'cancelled', 'completed', 'no_show')),
   created_at timestamptz not null default now()
 );
+
+-- Garante que instalações antigas também aceitem o status 'no_show'
+do $$
+begin
+  alter table appointments drop constraint if exists appointments_status_check;
+  alter table appointments add constraint appointments_status_check
+    check (status in ('confirmed', 'cancelled', 'completed', 'no_show'));
+end $$;
 
 create index if not exists idx_appointments_date on appointments(appointment_date);
 
@@ -202,3 +213,117 @@ insert into business_hours (weekday, open_time, close_time, is_closed) values
   (5, '09:00', '18:00', false),    -- sexta
   (6, '09:00', '13:00', false)     -- sábado
 on conflict (weekday) do nothing;
+
+-- ---------------------------------------------------------
+-- 9. PROMOÇÕES
+-- Por enquanto são só banners informativos (título/descrição/período).
+-- O preço em si continua sendo editado direto no serviço, pra evitar
+-- que um desconto seja calculado no navegador e possa ser manipulado.
+-- ---------------------------------------------------------
+create table if not exists promotions (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  description text,
+  service_id uuid references services(id), -- null = vale para todos os serviços
+  start_date date,
+  end_date date,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------
+-- 10. BLOQUEIOS DE AGENDA
+-- Além do horário semanal (business_hours), permite fechar um dia
+-- específico inteiro (feriado, folga) ou só um intervalo de horário
+-- nesse dia (ex: 12h-13h de almoço, ou uma tarde específica).
+-- Se start_time/end_time forem nulos, bloqueia o dia inteiro.
+-- ---------------------------------------------------------
+create table if not exists schedule_blocks (
+  id uuid primary key default gen_random_uuid(),
+  block_date date not null,
+  start_time time,
+  end_time time,
+  reason text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_schedule_blocks_date on schedule_blocks(block_date);
+
+-- ---------------------------------------------------------
+-- 11. FUNÇÃO AUXILIAR: verifica se o usuário logado é admin
+-- ---------------------------------------------------------
+create or replace function public.is_admin()
+returns boolean as $$
+  select coalesce(
+    (select is_admin from profiles where id = auth.uid()),
+    false
+  );
+$$ language sql security definer stable;
+
+-- ---------------------------------------------------------
+-- 12. RLS das novas tabelas + permissões de administrador
+-- ---------------------------------------------------------
+alter table promotions enable row level security;
+alter table schedule_blocks enable row level security;
+
+drop policy if exists "public read active promotions" on promotions;
+create policy "public read active promotions"
+  on promotions for select
+  using (active = true);
+
+drop policy if exists "public read schedule blocks" on schedule_blocks;
+create policy "public read schedule blocks"
+  on schedule_blocks for select
+  using (true);
+
+-- Administrador tem acesso total às tabelas de gestão do salão
+drop policy if exists "admin manage services" on services;
+create policy "admin manage services"
+  on services for all
+  using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "admin manage business_hours" on business_hours;
+create policy "admin manage business_hours"
+  on business_hours for all
+  using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "admin manage promotions" on promotions;
+create policy "admin manage promotions"
+  on promotions for all
+  using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "admin manage schedule_blocks" on schedule_blocks;
+create policy "admin manage schedule_blocks"
+  on schedule_blocks for all
+  using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "admin manage appointments" on appointments;
+create policy "admin manage appointments"
+  on appointments for all
+  using (public.is_admin()) with check (public.is_admin());
+
+-- ---------------------------------------------------------
+-- 13. RELATÓRIO DE CLIENTES (histórico + quem não retornou)
+-- Só funciona para quem é admin (protegido dentro da própria função)
+-- ---------------------------------------------------------
+create or replace function public.get_client_summary()
+returns table(
+  customer_name text,
+  customer_phone text,
+  customer_email text,
+  total_appointments bigint,
+  last_appointment_date date
+) as $$
+  select
+    customer_name,
+    customer_phone,
+    customer_email,
+    count(*) as total_appointments,
+    max(appointment_date) as last_appointment_date
+  from appointments
+  where public.is_admin()
+  group by customer_name, customer_phone, customer_email
+  order by max(appointment_date) desc;
+$$ language sql security definer stable;
+
+grant execute on function public.get_client_summary() to authenticated;
