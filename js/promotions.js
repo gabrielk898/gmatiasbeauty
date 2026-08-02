@@ -11,13 +11,22 @@ async function loadPromoBanner() {
   const { data, error } = await supabaseClient
     .from("promotions")
     .select("*, service:services(name)")
-    .eq("active", true)
-    .or(`start_date.is.null,start_date.lte.${today}`)
-    .or(`end_date.is.null,end_date.gte.${today}`);
+    .eq("active", true);
 
-  if (error || !data || data.length === 0) return;
+  if (error) {
+    console.error("Erro ao carregar promoções:", error);
+    return;
+  }
 
-  slot.innerHTML = data
+  const current = (data || []).filter((p) => {
+    const afterStart = !p.start_date || p.start_date <= today;
+    const beforeEnd = !p.end_date || p.end_date >= today;
+    return afterStart && beforeEnd;
+  });
+
+  if (current.length === 0) return;
+
+  slot.innerHTML = current
     .map(
       (p) => `
       <div class="promo-card">
