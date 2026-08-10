@@ -60,8 +60,13 @@ function renderLogin(errorMsg) {
           ${errorMsg ? `<p class="form-error">${errorMsg}</p>` : ""}
           <button type="submit" class="btn btn-primary btn-block">Entrar</button>
         </form>
+        <div class="modal-toggle">
+          <button id="admin-forgot-link">Esqueci minha senha</button>
+        </div>
       </div>
     </div>`;
+
+  document.getElementById("admin-forgot-link").addEventListener("click", renderAdminForgot);
 
   document.getElementById("admin-login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -76,6 +81,52 @@ function renderLogin(errorMsg) {
     }
 
     checkAdminAndRender(data.user);
+  });
+}
+
+function renderAdminForgot() {
+  document.getElementById("admin-root").innerHTML = `
+    <div class="admin-login-wrap">
+      <div class="card form-card" style="max-width: 360px;">
+        <h2 class="font-display" style="margin-bottom: 20px; text-align:center;">Recuperar senha</h2>
+        <form id="admin-forgot-form">
+          <div class="form-field">
+            <label for="admin-forgot-email">E-mail</label>
+            <input type="email" id="admin-forgot-email" required autocomplete="email" />
+          </div>
+          <p id="admin-forgot-error" class="form-error hidden"></p>
+          <p id="admin-forgot-success" class="hidden" style="color: var(--color-success); font-size:0.88rem; margin-bottom:14px;">
+            Link enviado! Confira seu e-mail (e a caixa de spam).
+          </p>
+          <button type="submit" class="btn btn-primary btn-block">Enviar link de redefinição</button>
+        </form>
+        <div class="modal-toggle">
+          <button id="admin-forgot-back">← Voltar para o login</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById("admin-forgot-back").addEventListener("click", () => renderLogin());
+
+  document.getElementById("admin-forgot-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("admin-forgot-email").value.trim();
+    const errorEl = document.getElementById("admin-forgot-error");
+    const successEl = document.getElementById("admin-forgot-success");
+    errorEl.classList.add("hidden");
+    successEl.classList.add("hidden");
+
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-senha.html`,
+    });
+
+    if (error) {
+      errorEl.textContent = error.message;
+      errorEl.classList.remove("hidden");
+      return;
+    }
+
+    successEl.classList.remove("hidden");
   });
 }
 
