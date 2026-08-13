@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Serviços — gmatiasbeauty</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="header-inner">
+        <div class="brand">
+          <span class="brand-mark">G</span>
+          <span>gmatias<span class="brand-accent">beauty</span></span>
+        </div>
+        <nav class="nav">
+          <a href="index.html">Início</a>
+          <a href="servicos.html" class="active">Serviços</a>
+          <a href="agendar.html">Agendar</a>
+          <a href="portal.html" id="nav-entrar">Entrar</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main">
+      <div class="step-header">
+        <p class="step-eyebrow">Nossos Serviços</p>
+        <h2>O que fazemos por aqui</h2>
+        <p class="step-sub">Escolha um procedimento e agende em poucos passos</p>
+      </div>
+
+      <div id="promo-banner-slot" class="promo-banner" style="margin-top: 32px;"></div>
+
+      <div id="service-page-list" class="service-page-list">
+        <!-- preenchido via js/servicos.js -->
+      </div>
+      <p id="service-page-empty" class="empty-state hidden">
+        Nenhum serviço disponível no momento.
+      </p>
+    </main>
+
+    <footer class="footer">
+      <p>© 2026 gmatiasbeauty. Todos os direitos reservados.</p>
+    </footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/nav-auth.js"></script>
+  <script src="js/promotions.js"></script>
+  <script src="js/servicos.js"></script>
+</body>
+</html>

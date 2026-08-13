@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minha Conta — gmatiasbeauty</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="header-inner">
+        <div class="brand">
+          <span class="brand-mark">G</span>
+          <span>gmatias<span class="brand-accent">beauty</span></span>
+        </div>
+        <nav class="nav">
+          <a href="index.html">Início</a>
+          <a href="servicos.html">Serviços</a>
+          <a href="agendar.html">Agendar</a>
+          <a href="portal.html" class="active" id="nav-entrar">Entrar</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="portal-section" id="portal-content">
+        <!-- preenchido via js/portal.js -->
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>© 2026 gmatiasbeauty. Todos os direitos reservados.</p>
+    </footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/portal.js"></script>
+</body>
+</html>

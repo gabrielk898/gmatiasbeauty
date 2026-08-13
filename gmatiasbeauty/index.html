@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gmatiasbeauty</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="header-inner">
+        <div class="brand">
+          <span class="brand-mark">G</span>
+          <span>gmatias<span class="brand-accent">beauty</span></span>
+        </div>
+        <nav class="nav">
+          <a href="index.html" class="active">Início</a>
+          <a href="servicos.html">Serviços</a>
+          <a href="agendar.html">Agendar</a>
+          <a href="portal.html" id="nav-entrar">Entrar</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="hero">
+        <h1>Beleza que <span class="brand-accent">realça</span> sua essência</h1>
+        <p class="subtitle">
+          Agende seu horário com especialistas em um ambiente pensado
+          para o seu bem-estar e conforto.
+        </p>
+        <div style="margin-top: 32px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap;">
+          <a href="agendar.html" class="btn btn-primary">Agendar Agora</a>
+          <a
+            href="https://wa.me/55SEUNUMEROAQUI?text=Ol%C3%A1!%20Vim%20pelo%20site%20e%20queria%20tirar%20uma%20d%C3%BAvida."
+            target="_blank"
+            rel="noopener"
+            class="btn btn-secondary"
+          >💬 Falar no WhatsApp</a>
+        </div>
+      </section>
+
+      <div id="promo-banner-slot" class="promo-banner"></div>
+
+      <section class="gallery-section">
+        <h2>Resultados Reais</h2>
+        <p class="section-sub">
+          Alguns dos procedimentos realizados por aqui — antes e depois.
+        </p>
+        <div id="gallery-grid" class="gallery-grid">
+          <!-- preenchido via js/gallery.js -->
+        </div>
+        <div style="margin-top: 40px;">
+          <a href="servicos.html" class="btn btn-secondary">Ver todos os serviços</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>© 2026 gmatiasbeauty. Todos os direitos reservados.</p>
+    </footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/nav-auth.js"></script>
+  <script src="js/promotions.js"></script>
+  <script src="js/gallery.js"></script>
+</body>
+</html>
