@@ -415,6 +415,7 @@ async function submitBooking() {
     start_time: state.selectedSlot.start,
     end_time: state.selectedSlot.end,
     status: "confirmed",
+    booking_source: "web",
   };
 
   const { error } = await supabaseClient.from("appointments").insert(payload);

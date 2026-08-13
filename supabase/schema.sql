@@ -92,8 +92,17 @@ create table if not exists appointments (
   end_time time not null,
   status text not null default 'confirmed'
     check (status in ('confirmed', 'cancelled', 'completed', 'no_show')),
+  booking_source text not null default 'web' check (booking_source in ('web', 'whatsapp')),
   created_at timestamptz not null default now()
 );
+
+alter table appointments add column if not exists booking_source text not null default 'web';
+do $$
+begin
+  alter table appointments drop constraint if exists appointments_booking_source_check;
+  alter table appointments add constraint appointments_booking_source_check
+    check (booking_source in ('web', 'whatsapp'));
+end $$;
 
 -- Garante que instalações antigas também aceitem o status 'no_show'
 do $$
@@ -327,3 +336,19 @@ returns table(
 $$ language sql security definer stable;
 
 grant execute on function public.get_client_summary() to authenticated;
+
+-- ---------------------------------------------------------
+-- 14. SESSÕES DO BOT DE WHATSAPP
+-- Guarda em que ponto da conversa cada número de telefone está.
+-- RLS fica ligado sem NENHUMA policy: só a Edge Function (que usa a
+-- service_role, e por isso ignora RLS) consegue ler/escrever aqui.
+-- Nem o site nem nenhum usuário logado tem acesso a essa tabela.
+-- ---------------------------------------------------------
+create table if not exists whatsapp_sessions (
+  phone text primary key,
+  step text not null default 'menu',
+  context jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table whatsapp_sessions enable row level security;
