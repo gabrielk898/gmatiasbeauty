@@ -26,6 +26,11 @@ const GALLERY_ITEMS = [
     after: "img/resultados/laser-barba-depois.jpg",
   },
   {
+    title: "Laser Faixa de Barba",
+    before: "img/resultados/laser-barba-2-antes.jpg",
+    after: "img/resultados/laser-barba-2-depois.jpg",
+  },
+  {
     title: "Tratamento para Melasma",
     before: "img/resultados/melasma-antes.jpg",
     after: "img/resultados/melasma-depois.jpg",

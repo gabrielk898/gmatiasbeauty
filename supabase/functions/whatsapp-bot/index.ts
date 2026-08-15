@@ -350,6 +350,10 @@ Deno.serve(async (req) => {
             ? "Ih, esse horário acabou de ser reservado por outra pessoa. Digite *1* para escolher outro horário."
             : "Não consegui concluir o agendamento agora. Tente novamente em instantes.";
         } else {
+          await supabase.from("clients").upsert(
+            { phone, full_name: ctx.name },
+            { onConflict: "phone" }
+          );
           reply = `✅ Agendamento confirmado!\n\n*${ctx.service.name}*\n${formatDateBR(ctx.date)} às ${
             ctx.slot.start
           }\n\nAté breve! Digite *menu* a qualquer momento para outras opções.`;

@@ -320,27 +320,70 @@ create policy "admin manage appointments"
   using (public.is_admin()) with check (public.is_admin());
 
 -- ---------------------------------------------------------
--- 13. RELATÓRIO DE CLIENTES (histórico + quem não retornou)
+-- 13. FICHA DE CLIENTES
+-- Existe independente de o cliente ter criado conta ou não —
+-- é alimentada automaticamente a cada agendamento (site, admin ou
+-- futuramente WhatsApp), usando o telefone como identificador.
+-- Guarda dados que não fazem sentido morar em "appointments"
+-- (que é por atendimento), como a data de aniversário.
+-- ---------------------------------------------------------
+create table if not exists clients (
+  id uuid primary key default gen_random_uuid(),
+  phone text not null unique,
+  full_name text,
+  email text,
+  birthday date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table clients enable row level security;
+
+-- Qualquer pessoa agendando (mesmo sem login) pode criar/atualizar
+-- a própria ficha — mas ninguém além do admin consegue LER a lista
+-- (isso protege telefone/e-mail/aniversário de todo mundo).
+drop policy if exists "public upsert clients" on clients;
+create policy "public upsert clients"
+  on clients for insert
+  with check (true);
+
+drop policy if exists "public update clients" on clients;
+create policy "public update clients"
+  on clients for update
+  using (true) with check (true);
+
+drop policy if exists "admin read clients" on clients;
+create policy "admin read clients"
+  on clients for select
+  using (public.is_admin());
+
+-- ---------------------------------------------------------
+-- 14. RELATÓRIO DE CLIENTES (histórico + aniversário + quem não retornou)
 -- Só funciona para quem é admin (protegido dentro da própria função)
 -- ---------------------------------------------------------
+drop function if exists public.get_client_summary();
+
 create or replace function public.get_client_summary()
 returns table(
   customer_name text,
   customer_phone text,
   customer_email text,
+  birthday date,
   total_appointments bigint,
   last_appointment_date date
 ) as $$
   select
-    customer_name,
-    customer_phone,
-    customer_email,
+    a.customer_name,
+    a.customer_phone,
+    a.customer_email,
+    c.birthday,
     count(*) as total_appointments,
-    max(appointment_date) as last_appointment_date
-  from appointments
+    max(a.appointment_date) as last_appointment_date
+  from appointments a
+  left join clients c on c.phone = a.customer_phone
   where public.is_admin()
-  group by customer_name, customer_phone, customer_email
-  order by max(appointment_date) desc;
+  group by a.customer_name, a.customer_phone, a.customer_email, c.birthday
+  order by max(a.appointment_date) desc;
 $$ language sql security definer stable;
 
 grant execute on function public.get_client_summary() to authenticated;

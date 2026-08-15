@@ -381,6 +381,7 @@ async function submitBooking() {
   const name = document.getElementById("customer-name").value.trim();
   const phone = document.getElementById("customer-phone").value.trim();
   const email = document.getElementById("customer-email").value.trim();
+  const birthday = document.getElementById("customer-birthday").value;
   const errorEl = document.getElementById("form-error");
   errorEl.classList.add("hidden");
 
@@ -436,6 +437,19 @@ async function submitBooking() {
     errorEl.classList.remove("hidden");
     return;
   }
+
+  // Atualiza a ficha do cliente (nome/telefone/e-mail/aniversário) — existe
+  // independente do cliente ter criado conta ou não. Só inclui campos
+  // preenchidos, pra não apagar um aniversário já salvo numa visita anterior.
+  const clientPayload = { phone, full_name: name };
+  if (email) clientPayload.email = email;
+  if (birthday) clientPayload.birthday = birthday;
+  supabaseClient
+    .from("clients")
+    .upsert(clientPayload, { onConflict: "phone" })
+    .then(({ error: clientError }) => {
+      if (clientError) console.error("Falha ao salvar ficha do cliente:", clientError);
+    });
 
   // Dispara o e-mail de confirmação diretamente (sem depender do Database
   // Webhook do Supabase, que às vezes falha por um bug da própria plataforma).

@@ -63,6 +63,21 @@ function timeAgo(isoTimestamp) {
   return `há ${days}d`;
 }
 
+function formatBirthdayShort(iso) {
+  const [, m, d] = iso.split("-").map(Number);
+  return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
+}
+
+function daysUntilBirthday(iso) {
+  if (!iso) return null;
+  const [, m, d] = iso.split("-").map(Number);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let next = new Date(today.getFullYear(), m - 1, d);
+  if (next < today) next = new Date(today.getFullYear() + 1, m - 1, d);
+  return Math.round((next - today) / (1000 * 60 * 60 * 24));
+}
+
 // =========================================================
 // LOGIN / GATE DE ADMIN
 // =========================================================
@@ -1138,22 +1153,22 @@ async function renderClientesTab() {
   const content = document.getElementById("admin-content");
   content.innerHTML = `
     <h2>Clientes</h2>
-    <p class="admin-sub">Histórico por cliente. Destacamos quem não retorna há mais de 45 dias.</p>
+    <p class="admin-sub">Histórico por cliente. Destacamos quem não retorna há mais de 45 dias e aniversariantes dos próximos 14 dias.</p>
     <table class="admin-table">
-      <thead><tr><th>Cliente</th><th>Contato</th><th>Atendimentos</th><th>Último atendimento</th><th></th></tr></thead>
-      <tbody id="clients-tbody"><tr><td colspan="5">Carregando…</td></tr></tbody>
+      <thead><tr><th>Cliente</th><th>Contato</th><th>Aniversário</th><th>Atendimentos</th><th>Último atendimento</th><th></th></tr></thead>
+      <tbody id="clients-tbody"><tr><td colspan="6">Carregando…</td></tr></tbody>
     </table>`;
 
   const { data, error } = await supabaseClient.rpc("get_client_summary");
   const tbody = document.getElementById("clients-tbody");
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="5">Não foi possível carregar os clientes.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">Não foi possível carregar os clientes.</td></tr>`;
     return;
   }
 
   if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5">Nenhum cliente ainda.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">Nenhum cliente ainda.</td></tr>`;
     return;
   }
 
@@ -1164,13 +1179,20 @@ async function renderClientesTab() {
     .map((c) => {
       const lastDate = c.last_appointment_date ? new Date(c.last_appointment_date) : null;
       const inactive = lastDate && lastDate < cutoff;
+      const daysUntil = daysUntilBirthday(c.birthday);
+      const isSoonBirthday = daysUntil !== null && daysUntil <= 14;
+
       return `
       <tr>
         <td>${c.customer_name}</td>
         <td>${c.customer_phone}${c.customer_email ? `<br><span style="color:var(--color-text-soft); font-size:0.82rem;">${c.customer_email}</span>` : ""}</td>
+        <td>${c.birthday ? formatBirthdayShort(c.birthday) : "—"}</td>
         <td>${c.total_appointments}</td>
         <td>${formatDateBR(c.last_appointment_date)}</td>
-        <td>${inactive ? `<span class="badge off">Sem retorno</span>` : ""}</td>
+        <td>
+          ${inactive ? `<span class="badge off">Sem retorno</span>` : ""}
+          ${isSoonBirthday ? `<span class="badge on">🎂 ${daysUntil === 0 ? "Hoje!" : `em ${daysUntil}d`}</span>` : ""}
+        </td>
       </tr>`;
     })
     .join("");
