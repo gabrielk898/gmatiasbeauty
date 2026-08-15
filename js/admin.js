@@ -8,6 +8,12 @@ const adminState = {
   services: [],
   editingServiceId: null,
   editingPromotionId: null,
+  notifications: [],
+  notifPanelOpen: false,
+  calYear: new Date().getFullYear(),
+  calMonth: new Date().getMonth(),
+  calSelectedDate: new Date().toISOString().slice(0, 10),
+  calMonthAppointments: [],
 };
 
 const TABS = [
@@ -16,9 +22,15 @@ const TABS = [
   { id: "bloqueios", label: "Bloqueios de Agenda" },
   { id: "promocoes", label: "Promoções" },
   { id: "agendamentos", label: "Agendamentos" },
+  { id: "faturamento", label: "Faturamento" },
   { id: "clientes", label: "Clientes" },
 ];
 
+const WEEKDAY_LABELS_SHORT = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
+const MONTH_NAMES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
 const WEEKDAY_NAMES = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
 function formatPrice(cents) {
@@ -38,6 +50,17 @@ function formatDateBR(iso) {
   if (!iso) return "";
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("pt-BR");
+}
+
+function timeAgo(isoTimestamp) {
+  const diffMs = Date.now() - new Date(isoTimestamp).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "agora";
+  if (mins < 60) return `há ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `há ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `há ${days}d`;
 }
 
 // =========================================================
@@ -179,7 +202,11 @@ function renderShell() {
           ).join("")}
         </nav>
         <div class="admin-tab-footer">
-          <button class="btn-icon" id="admin-signout-shell">Sair</button>
+          <button class="admin-notif-btn" id="admin-notif-btn">
+            🔔 Notificações
+            <span class="badge-count hidden" id="admin-notif-count">0</span>
+          </button>
+          <button class="btn-icon" id="admin-signout-shell" style="margin-top:8px; width:100%;">Sair</button>
         </div>
       </aside>
       <main class="admin-content" id="admin-content"></main>
@@ -194,11 +221,94 @@ function renderShell() {
     renderLogin();
   });
 
+  document.getElementById("admin-notif-btn").addEventListener("click", () => {
+    adminState.notifPanelOpen = !adminState.notifPanelOpen;
+    renderNotifPanel();
+  });
+
   setActiveTab(adminState.activeTab);
+  loadNotifications();
+  setInterval(loadNotifications, 30000);
+}
+
+async function loadNotifications() {
+  const { data, error } = await supabaseClient
+    .from("admin_notifications")
+    .select("*")
+    .eq("read", false)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) return;
+
+  adminState.notifications = data || [];
+  const countEl = document.getElementById("admin-notif-count");
+  if (!countEl) return;
+
+  if (adminState.notifications.length > 0) {
+    countEl.textContent = adminState.notifications.length;
+    countEl.classList.remove("hidden");
+  } else {
+    countEl.classList.add("hidden");
+  }
+
+  if (adminState.notifPanelOpen) renderNotifPanel();
+}
+
+function renderNotifPanel() {
+  const content = document.getElementById("admin-content");
+  const existing = document.getElementById("admin-notif-panel");
+  if (existing) existing.remove();
+
+  if (!adminState.notifPanelOpen) return;
+
+  const panel = document.createElement("div");
+  panel.id = "admin-notif-panel";
+  panel.className = "admin-notif-panel";
+
+  if (adminState.notifications.length === 0) {
+    panel.innerHTML = `
+      <div class="admin-notif-panel-header">Notificações</div>
+      <div class="admin-notif-item">Nenhuma notificação nova.</div>`;
+  } else {
+    panel.innerHTML = `
+      <div class="admin-notif-panel-header">
+        Notificações
+        <button id="admin-notif-clear" style="background:none; border:none; color:var(--color-gold-dark); font-weight:600; font-size:0.78rem;">Marcar todas como lidas</button>
+      </div>
+      ${adminState.notifications
+        .map(
+          (n) => `
+        <div class="admin-notif-item">
+          🔔
+          ${n.message}
+          <span class="time">${timeAgo(n.created_at)}</span>
+        </div>`
+        )
+        .join("")}`;
+  }
+
+  content.prepend(panel);
+
+  const clearBtn = document.getElementById("admin-notif-clear");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", async () => {
+      await supabaseClient
+        .from("admin_notifications")
+        .update({ read: true })
+        .in(
+          "id",
+          adminState.notifications.map((n) => n.id)
+        );
+      adminState.notifPanelOpen = false;
+      loadNotifications();
+    });
+  }
 }
 
 function setActiveTab(tabId) {
   adminState.activeTab = tabId;
+  adminState.notifPanelOpen = false;
   document.querySelectorAll(".admin-tab").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === tabId);
   });
@@ -209,6 +319,7 @@ function setActiveTab(tabId) {
     bloqueios: renderBloqueiosTab,
     promocoes: renderPromocoesTab,
     agendamentos: renderAgendamentosTab,
+    faturamento: renderFaturamentoTab,
     clientes: renderClientesTab,
   };
 
@@ -732,57 +843,147 @@ function renderPromoForm(services, editing) {
 }
 
 // =========================================================
-// TAB: AGENDAMENTOS
+// TAB: AGENDAMENTOS (calendário)
 // =========================================================
+const STATUS_OPTIONS = ["confirmed", "completed", "cancelled", "no_show"];
+const STATUS_LABELS = {
+  confirmed: "Confirmado",
+  completed: "Concluído",
+  cancelled: "Cancelado",
+  no_show: "Não compareceu",
+};
+
 async function renderAgendamentosTab() {
   const content = document.getElementById("admin-content");
   content.innerHTML = `
     <h2>Agendamentos</h2>
-    <p class="admin-sub">Todos os horários marcados. Atualize o status conforme o atendimento acontece.</p>
-    <table class="admin-table">
-      <thead><tr><th>Data</th><th>Cliente</th><th>Serviço</th><th>Status</th></tr></thead>
-      <tbody id="appointments-tbody"><tr><td colspan="4">Carregando…</td></tr></tbody>
-    </table>`;
+    <p class="admin-sub">Clique em um dia para ver os agendamentos. Atualize o status conforme o atendimento acontece.</p>
+
+    <div class="card" style="max-width: 420px; margin: 0 0 20px;">
+      <div class="calendar-nav">
+        <button id="admin-cal-prev" aria-label="Mês anterior">‹</button>
+        <strong id="admin-cal-label" class="font-display"></strong>
+        <button id="admin-cal-next" aria-label="Próximo mês">›</button>
+      </div>
+      <div class="calendar-grid" id="admin-calendar-grid"></div>
+    </div>
+
+    <div id="admin-day-label" class="portal-section-label"></div>
+    <div id="admin-day-appointments"></div>`;
+
+  document.getElementById("admin-cal-prev").addEventListener("click", () => {
+    adminState.calMonth -= 1;
+    if (adminState.calMonth < 0) {
+      adminState.calMonth = 11;
+      adminState.calYear -= 1;
+    }
+    loadAndRenderAdminCalendar();
+  });
+
+  document.getElementById("admin-cal-next").addEventListener("click", () => {
+    adminState.calMonth += 1;
+    if (adminState.calMonth > 11) {
+      adminState.calMonth = 0;
+      adminState.calYear += 1;
+    }
+    loadAndRenderAdminCalendar();
+  });
+
+  await loadAndRenderAdminCalendar();
+}
+
+async function loadAndRenderAdminCalendar() {
+  const year = adminState.calYear;
+  const month = adminState.calMonth;
+  const startIso = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const endIso = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
   const { data, error } = await supabaseClient
     .from("appointments")
     .select("*, service:services(name)")
-    .order("appointment_date", { ascending: false })
-    .order("start_time", { ascending: false })
-    .limit(200);
+    .gte("appointment_date", startIso)
+    .lte("appointment_date", endIso)
+    .order("start_time");
 
-  const tbody = document.getElementById("appointments-tbody");
+  adminState.calMonthAppointments = error ? [] : data || [];
+  renderAdminCalendarGrid();
 
-  if (error) {
-    tbody.innerHTML = `<tr><td colspan="4">Não foi possível carregar os agendamentos.</td></tr>`;
+  const hasSelectedInMonth = adminState.calSelectedDate.slice(0, 7) === startIso.slice(0, 7);
+  if (!hasSelectedInMonth) {
+    adminState.calSelectedDate = startIso;
+  }
+  renderAdminDayList();
+}
+
+function renderAdminCalendarGrid() {
+  const year = adminState.calYear;
+  const month = adminState.calMonth;
+  const label = document.getElementById("admin-cal-label");
+  const grid = document.getElementById("admin-calendar-grid");
+  label.textContent = `${MONTH_NAMES[month]} ${year}`;
+
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const datesWithEvents = new Set(
+    adminState.calMonthAppointments.map((a) => a.appointment_date)
+  );
+
+  let cells = WEEKDAY_LABELS_SHORT.map((d) => `<div class="weekday">${d}</div>`).join("");
+  for (let i = 0; i < firstWeekday; i++) cells += `<div></div>`;
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    let cls = "calendar-day selectable";
+    if (datesWithEvents.has(iso)) cls += " has-events";
+    if (iso === adminState.calSelectedDate) cls += " selected";
+    cells += `<button type="button" class="${cls}" data-date="${iso}">${day}</button>`;
+  }
+
+  grid.innerHTML = cells;
+
+  grid.querySelectorAll(".calendar-day.selectable").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      adminState.calSelectedDate = btn.dataset.date;
+      renderAdminCalendarGrid();
+      renderAdminDayList();
+    });
+  });
+}
+
+function renderAdminDayList() {
+  const dayLabel = document.getElementById("admin-day-label");
+  const container = document.getElementById("admin-day-appointments");
+  const dayAppointments = adminState.calMonthAppointments.filter(
+    (a) => a.appointment_date === adminState.calSelectedDate
+  );
+
+  dayLabel.textContent = `${formatDateBR(adminState.calSelectedDate)} — ${dayAppointments.length} agendamento${dayAppointments.length === 1 ? "" : "s"}`;
+
+  if (dayAppointments.length === 0) {
+    container.innerHTML = `<p class="empty-state">Nenhum agendamento nesse dia.</p>`;
     return;
   }
 
-  if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4">Nenhum agendamento ainda.</td></tr>`;
-    return;
-  }
-
-  const statusOptions = ["confirmed", "completed", "cancelled", "no_show"];
-  const statusLabels = { confirmed: "Confirmado", completed: "Concluído", cancelled: "Cancelado", no_show: "Não compareceu" };
-
-  tbody.innerHTML = data
+  container.innerHTML = dayAppointments
     .map(
       (a) => `
-      <tr>
-        <td>${formatDateBR(a.appointment_date)} às ${a.start_time.slice(0, 5)}</td>
-        <td>${a.customer_name}<br><span style="color:var(--color-text-soft); font-size:0.82rem;">${a.customer_phone}</span></td>
-        <td>${a.service?.name || "—"}</td>
-        <td>
-          <select data-status-id="${a.id}">
-            ${statusOptions.map((s) => `<option value="${s}" ${a.status === s ? "selected" : ""}>${statusLabels[s]}</option>`).join("")}
-          </select>
-        </td>
-      </tr>`
+      <div class="day-appointment-card">
+        <div class="info">
+          <strong>${a.start_time.slice(0, 5)} · ${a.service?.name || "Serviço"}</strong>
+          <span>${a.customer_name} · ${a.customer_phone}</span>
+        </div>
+        <select data-status-id="${a.id}">
+          ${STATUS_OPTIONS.map(
+            (s) => `<option value="${s}" ${a.status === s ? "selected" : ""}>${STATUS_LABELS[s]}</option>`
+          ).join("")}
+        </select>
+      </div>`
     )
     .join("");
 
-  tbody.querySelectorAll("[data-status-id]").forEach((select) => {
+  container.querySelectorAll("[data-status-id]").forEach((select) => {
     select.addEventListener("change", async () => {
       const { error } = await supabaseClient
         .from("appointments")
@@ -790,8 +991,143 @@ async function renderAgendamentosTab() {
         .eq("id", select.dataset.statusId);
       if (error) {
         alert("Não foi possível atualizar o status.");
+        return;
       }
+      const item = adminState.calMonthAppointments.find((a) => a.id === select.dataset.statusId);
+      if (item) item.status = select.value;
     });
+  });
+}
+
+// =========================================================
+// TAB: FATURAMENTO
+// =========================================================
+let revenueChartInstance = null;
+
+async function renderFaturamentoTab() {
+  const content = document.getElementById("admin-content");
+  content.innerHTML = `
+    <h2>Faturamento</h2>
+    <p class="admin-sub">Baseado nos atendimentos marcados como concluídos no mês.</p>
+    <div class="metric-grid" id="metric-grid">
+      <div class="metric-card"><div class="label">Carregando…</div></div>
+    </div>
+    <div class="card">
+      <p style="font-size:0.82rem; color:var(--color-text-muted); margin-bottom:12px;">Faturamento por serviço (mês atual)</p>
+      <div style="position:relative; height:240px;">
+        <canvas id="revenue-chart"></canvas>
+      </div>
+    </div>`;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const range = (y, m) => {
+    const start = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const end = `${y}-${String(m + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    return { start, end };
+  };
+
+  const thisMonth = range(year, month);
+  const prevDate = new Date(year, month - 1, 1);
+  const prevMonth = range(prevDate.getFullYear(), prevDate.getMonth());
+
+  const [{ data: current }, { data: previous }] = await Promise.all([
+    supabaseClient
+      .from("appointments")
+      .select("*, service:services(name, price_cents)")
+      .gte("appointment_date", thisMonth.start)
+      .lte("appointment_date", thisMonth.end),
+    supabaseClient
+      .from("appointments")
+      .select("status, service:services(price_cents)")
+      .gte("appointment_date", prevMonth.start)
+      .lte("appointment_date", prevMonth.end),
+  ]);
+
+  const currentList = current || [];
+  const previousList = previous || [];
+
+  const completed = currentList.filter((a) => a.status === "completed");
+  const revenue = completed.reduce((sum, a) => sum + (a.service?.price_cents || 0), 0);
+  const prevRevenue = previousList
+    .filter((a) => a.status === "completed")
+    .reduce((sum, a) => sum + (a.service?.price_cents || 0), 0);
+
+  const cancelledOrNoShow = currentList.filter((a) => a.status === "cancelled" || a.status === "no_show").length;
+  const avgTicket = completed.length ? revenue / completed.length : 0;
+
+  let deltaHtml = `<span class="delta">sem dados do mês anterior</span>`;
+  if (prevRevenue > 0) {
+    const pct = Math.round(((revenue - prevRevenue) / prevRevenue) * 100);
+    const cls = pct >= 0 ? "positive" : "negative";
+    deltaHtml = `<span class="delta ${cls}">${pct >= 0 ? "+" : ""}${pct}% vs mês anterior</span>`;
+  }
+
+  document.getElementById("metric-grid").innerHTML = `
+    <div class="metric-card">
+      <div class="label">Faturamento (mês)</div>
+      <div class="value">${formatPrice(revenue)}</div>
+      ${deltaHtml}
+    </div>
+    <div class="metric-card">
+      <div class="label">Atendimentos concluídos</div>
+      <div class="value">${completed.length}</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Ticket médio</div>
+      <div class="value">${formatPrice(avgTicket)}</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Cancelamentos / faltas</div>
+      <div class="value">${cancelledOrNoShow}</div>
+    </div>`;
+
+  const byService = {};
+  completed.forEach((a) => {
+    const name = a.service?.name || "Outro";
+    byService[name] = (byService[name] || 0) + (a.service?.price_cents || 0);
+  });
+
+  const labels = Object.keys(byService);
+  const values = labels.map((l) => byService[l] / 100);
+
+  if (revenueChartInstance) revenueChartInstance.destroy();
+
+  if (labels.length === 0) {
+    document.getElementById("revenue-chart").parentElement.innerHTML =
+      `<p class="empty-state">Nenhum atendimento concluído neste mês ainda.</p>`;
+    return;
+  }
+
+  revenueChartInstance = new Chart(document.getElementById("revenue-chart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          data: values,
+          backgroundColor: "#A68A5B",
+          borderRadius: 4,
+          maxBarThickness: 40,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: (v) => "R$" + v, color: "#9A9280" },
+          grid: { color: "#EDE9DC" },
+        },
+        x: { ticks: { color: "#6E6656", font: { size: 11 } }, grid: { display: false } },
+      },
+    },
   });
 }
 

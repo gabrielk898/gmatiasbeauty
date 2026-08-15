@@ -346,6 +346,56 @@ $$ language sql security definer stable;
 grant execute on function public.get_client_summary() to authenticated;
 
 -- ---------------------------------------------------------
+-- 14. NOTIFICAÇÕES PARA O ADMIN
+-- Avisa automaticamente quando um cliente cancela (ou remarca —
+-- que na prática é um cancelamento seguido de um novo agendamento).
+-- Só o admin lê/atualiza; a inserção acontece via gatilho (não
+-- precisa de policy de insert pra ninguém).
+-- ---------------------------------------------------------
+create table if not exists admin_notifications (
+  id uuid primary key default gen_random_uuid(),
+  message text not null,
+  appointment_id uuid references appointments(id) on delete set null,
+  read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table admin_notifications enable row level security;
+
+drop policy if exists "admin read notifications" on admin_notifications;
+create policy "admin read notifications"
+  on admin_notifications for select
+  using (public.is_admin());
+
+drop policy if exists "admin update notifications" on admin_notifications;
+create policy "admin update notifications"
+  on admin_notifications for update
+  using (public.is_admin()) with check (public.is_admin());
+
+create or replace function public.notify_appointment_cancelled()
+returns trigger as $$
+declare
+  v_service_name text;
+begin
+  if TG_OP = 'UPDATE' and OLD.status = 'confirmed' and NEW.status = 'cancelled' then
+    select name into v_service_name from services where id = NEW.service_id;
+    insert into admin_notifications (message, appointment_id)
+    values (
+      NEW.customer_name || ' cancelou ' || coalesce(v_service_name, 'um agendamento') ||
+      ' de ' || to_char(NEW.appointment_date, 'DD/MM') || ' às ' || to_char(NEW.start_time, 'HH24:MI'),
+      NEW.id
+    );
+  end if;
+  return NEW;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists trg_notify_appointment_cancelled on appointments;
+create trigger trg_notify_appointment_cancelled
+  after update on appointments
+  for each row execute function public.notify_appointment_cancelled();
+
+-- ---------------------------------------------------------
 -- 14. SESSÕES DO BOT DE WHATSAPP
 -- Guarda em que ponto da conversa cada número de telefone está.
 -- RLS fica ligado sem NENHUMA policy: só a Edge Function (que usa a

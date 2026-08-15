@@ -1,5 +1,0 @@
-[build]
-  publish = "."
-  command = ""
-
-# Site 100% estático (HTML/CSS/JS puro) — não precisa de build step.
