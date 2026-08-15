@@ -188,6 +188,14 @@ create policy "user can read own appointments"
   on appointments for select
   using (auth.uid() = user_id);
 
+-- Cliente logado pode CANCELAR (e só cancelar) o próprio agendamento
+-- pela tela "Minha Conta" — não pode reativar, concluir, nem editar outros campos.
+drop policy if exists "user can cancel own appointments" on appointments;
+create policy "user can cancel own appointments"
+  on appointments for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id and status = 'cancelled');
+
 -- Perfil: cada usuário só lê/edita o próprio
 drop policy if exists "user can read own profile" on profiles;
 create policy "user can read own profile"

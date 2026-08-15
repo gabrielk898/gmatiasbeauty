@@ -995,6 +995,11 @@ button {
   color: var(--color-danger);
 }
 
+.appointment-status.no_show {
+  background: #F1E1DC;
+  color: var(--color-danger);
+}
+
 .appointment-card .meta {
   color: var(--color-text-muted);
   font-size: 0.88rem;
@@ -1030,6 +1035,70 @@ button {
   color: var(--color-text-muted);
   font-size: 0.85rem;
   margin-top: 2px;
+}
+
+/* ---------- Avatar ---------- */
+.avatar-circle {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--color-gold-light);
+  color: var(--color-gold-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+/* ---------- Abas do portal ---------- */
+.portal-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--color-footer);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  margin-bottom: 16px;
+}
+
+.portal-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 9px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.portal-tab.active {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-card);
+}
+
+/* ---------- Ações rápidas do card de agendamento ---------- */
+.appointment-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.appointment-actions button {
+  flex: 1;
+  background: none;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.appointment-actions button.danger {
+  border-color: #E0C4BC;
+  color: var(--color-danger);
 }
 
 /* ---------- Banner de promoções (visível ao cliente) ---------- */

@@ -18,7 +18,18 @@ function formatDateShort(iso) {
 }
 
 function statusLabel(status) {
-  return { confirmed: "Confirmado", completed: "Concluído", cancelled: "Cancelado" }[status] || status;
+  return (
+    { confirmed: "Confirmado", completed: "Concluído", cancelled: "Cancelado", no_show: "Não compareceu" }[
+      status
+    ] || status
+  );
+}
+
+function getInitials(name, email) {
+  const source = (name || "").trim() || (email || "").split("@")[0];
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return source.slice(0, 2).toUpperCase();
 }
 
 // ---------------------------------------------------------
@@ -144,6 +155,9 @@ function renderForgotForm() {
 // ---------------------------------------------------------
 // Painel logado
 // ---------------------------------------------------------
+let dashboardAppointments = [];
+let dashboardTab = "upcoming"; // "upcoming" | "history"
+
 async function renderDashboard(user) {
   const container = document.getElementById("portal-content");
   container.innerHTML = `<p class="empty-state">Carregando seus agendamentos…</p>`;
@@ -156,7 +170,7 @@ async function renderDashboard(user) {
 
   const { data: appointments, error } = await supabaseClient
     .from("appointments")
-    .select("*, service:services(name, price_cents)")
+    .select("*, service:services(id, name, price_cents)")
     .order("appointment_date", { ascending: true })
     .order("start_time", { ascending: true });
 
@@ -166,23 +180,11 @@ async function renderDashboard(user) {
     return;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const upcoming = (appointments || []).filter(
-    (a) => a.status === "confirmed" && a.appointment_date >= today
-  );
-  const history = (appointments || []).filter(
-    (a) => a.status !== "confirmed" || a.appointment_date < today
-  );
+  dashboardAppointments = appointments || [];
+  dashboardTab = "upcoming";
 
-  const renderCard = (a) => `
-    <div class="appointment-card">
-      <div class="row-top">
-        <h3>${a.service?.name || "Serviço"}</h3>
-        <span class="appointment-status ${a.status}">${statusLabel(a.status)}</span>
-      </div>
-      <p class="meta">📅 ${formatDateShort(a.appointment_date)} às ${a.start_time.slice(0, 5)}</p>
-      ${a.service ? `<p class="meta">${formatPrice(a.service.price_cents)}</p>` : ""}
-    </div>`;
+  const navEntrar = document.getElementById("nav-entrar");
+  if (navEntrar) navEntrar.textContent = "Minha Conta";
 
   container.innerHTML = `
     <div class="portal-header">
@@ -190,32 +192,111 @@ async function renderDashboard(user) {
     </div>
 
     <div class="account-box">
-      <div>
-        <div class="name">${profile?.full_name || "Olá!"}</div>
-        <div class="email">${user.email}</div>
+      <div style="display:flex; align-items:center; gap:14px;">
+        <div class="avatar-circle">${getInitials(profile?.full_name, user.email)}</div>
+        <div>
+          <div class="name">${profile?.full_name || "Olá!"}</div>
+          <div class="email">${user.email}</div>
+        </div>
       </div>
       <button class="btn btn-secondary" id="portal-logout">Sair</button>
     </div>
 
-    <div class="portal-section-label">Próximos agendamentos</div>
-    ${
-      upcoming.length
-        ? upcoming.map(renderCard).join("")
-        : `<p class="empty-state">Você ainda não tem agendamentos futuros. <a href="agendar.html" style="color: var(--color-gold-dark); font-weight:600;">Agendar agora →</a></p>`
-    }
+    <a href="agendar.html" class="btn btn-primary btn-block" style="margin-top: 16px;">+ Novo agendamento</a>
 
-    <div class="portal-section-label">Histórico</div>
-    ${
-      history.length
-        ? history.map(renderCard).join("")
-        : `<p class="empty-state">Nenhum atendimento anterior.</p>`
-    }
+    <div class="portal-tabs" style="margin-top: 24px;">
+      <button class="portal-tab" id="tab-upcoming">Próximos</button>
+      <button class="portal-tab" id="tab-history">Histórico</button>
+    </div>
+
+    <div id="dashboard-list"></div>
   `;
 
   document.getElementById("portal-logout").addEventListener("click", async () => {
     await supabaseClient.auth.signOut();
     initPortal();
   });
+
+  document.getElementById("tab-upcoming").addEventListener("click", () => {
+    dashboardTab = "upcoming";
+    renderDashboardList();
+  });
+  document.getElementById("tab-history").addEventListener("click", () => {
+    dashboardTab = "history";
+    renderDashboardList();
+  });
+
+  renderDashboardList();
+}
+
+function renderDashboardList() {
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = dashboardAppointments.filter((a) => a.status === "confirmed" && a.appointment_date >= today);
+  const history = dashboardAppointments.filter((a) => a.status !== "confirmed" || a.appointment_date < today);
+
+  document.getElementById("tab-upcoming").classList.toggle("active", dashboardTab === "upcoming");
+  document.getElementById("tab-upcoming").textContent = `Próximos (${upcoming.length})`;
+  document.getElementById("tab-history").classList.toggle("active", dashboardTab === "history");
+  document.getElementById("tab-history").textContent = `Histórico (${history.length})`;
+
+  const list = document.getElementById("dashboard-list");
+  const items = dashboardTab === "upcoming" ? upcoming : history;
+
+  if (items.length === 0) {
+    list.innerHTML =
+      dashboardTab === "upcoming"
+        ? `<p class="empty-state">Você ainda não tem agendamentos futuros. <a href="agendar.html" style="color: var(--color-gold-dark); font-weight:600;">Agendar agora →</a></p>`
+        : `<p class="empty-state">Nenhum atendimento anterior.</p>`;
+    return;
+  }
+
+  list.innerHTML = items
+    .map(
+      (a) => `
+      <div class="appointment-card">
+        <div class="row-top">
+          <h3>${a.service?.name || "Serviço"}</h3>
+          <span class="appointment-status ${a.status}">${statusLabel(a.status)}</span>
+        </div>
+        <p class="meta">📅 ${formatDateShort(a.appointment_date)} às ${a.start_time.slice(0, 5)}</p>
+        ${a.service ? `<p class="meta">${formatPrice(a.service.price_cents)}</p>` : ""}
+        ${
+          dashboardTab === "upcoming"
+            ? `<div class="appointment-actions">
+                <button data-reschedule="${a.id}" data-service="${a.service?.id || ""}">Remarcar</button>
+                <button class="danger" data-cancel="${a.id}">Cancelar</button>
+              </div>`
+            : ""
+        }
+      </div>`
+    )
+    .join("");
+
+  list.querySelectorAll("[data-cancel]").forEach((btn) => {
+    btn.addEventListener("click", () => cancelAppointment(btn.dataset.cancel));
+  });
+
+  list.querySelectorAll("[data-reschedule]").forEach((btn) => {
+    btn.addEventListener("click", () => rescheduleAppointment(btn.dataset.reschedule, btn.dataset.service));
+  });
+}
+
+async function cancelAppointment(id) {
+  if (!confirm("Cancelar esse agendamento?")) return;
+  const { error } = await supabaseClient.from("appointments").update({ status: "cancelled" }).eq("id", id);
+  if (error) {
+    alert("Não foi possível cancelar agora. Tente novamente.");
+    return;
+  }
+  const item = dashboardAppointments.find((a) => a.id === id);
+  if (item) item.status = "cancelled";
+  renderDashboardList();
+}
+
+async function rescheduleAppointment(id, serviceId) {
+  if (!confirm("Vamos cancelar esse horário e te levar para escolher um novo. Continuar?")) return;
+  await supabaseClient.from("appointments").update({ status: "cancelled" }).eq("id", id);
+  window.location.href = serviceId ? `agendar.html?service=${serviceId}` : "agendar.html";
 }
 
 // ---------------------------------------------------------
