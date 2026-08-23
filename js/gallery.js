@@ -46,17 +46,51 @@ function renderGallery() {
     <div class="gallery-card">
       <div class="gallery-images">
         <figure>
-          <img src="${item.before}" alt="${item.title} — antes" loading="lazy" />
+          <img src="${item.before}" alt="${item.title} — antes" loading="lazy" class="zoomable" />
           <figcaption>Antes</figcaption>
         </figure>
         <figure>
-          <img src="${item.after}" alt="${item.title} — depois" loading="lazy" />
+          <img src="${item.after}" alt="${item.title} — depois" loading="lazy" class="zoomable" />
           <figcaption>Depois</figcaption>
         </figure>
       </div>
       <div class="gallery-card-title">${item.title}</div>
     </div>`
   ).join("");
+
+  grid.querySelectorAll(".zoomable").forEach((img) => {
+    img.addEventListener("click", () => openLightbox(img.src, img.alt));
+  });
+}
+
+// ---------------------------------------------------------
+// Lightbox — amplia a foto em tela cheia ao clicar
+// ---------------------------------------------------------
+function openLightbox(src, alt) {
+  const overlay = document.createElement("div");
+  overlay.className = "lightbox-overlay";
+  overlay.innerHTML = `
+    <button class="lightbox-close" aria-label="Fechar">✕</button>
+    <img src="${src}" alt="${alt}" />
+    <span class="lightbox-caption">${alt}</span>
+  `;
+  document.body.appendChild(overlay);
+  document.body.style.overflow = "hidden";
+
+  function close() {
+    overlay.remove();
+    document.body.style.overflow = "";
+    document.removeEventListener("keydown", onKeyDown);
+  }
+
+  function onKeyDown(e) {
+    if (e.key === "Escape") close();
+  }
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay || e.target.classList.contains("lightbox-close")) close();
+  });
+  document.addEventListener("keydown", onKeyDown);
 }
 
 renderGallery();
