@@ -1149,34 +1149,103 @@ async function renderFaturamentoTab() {
 // =========================================================
 // TAB: CLIENTES
 // =========================================================
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Envia o link de redefinição de senha para o e-mail do cliente.
+// O cliente clica no link e define a nova senha em /reset-senha.html.
+async function sendClientResetLink(email, btn) {
+  if (!confirm(`Enviar link de redefinição de senha para ${email}?`)) return;
+
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Enviando…";
+
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-senha.html`,
+  });
+
+  if (error) {
+    const rateLimited = error.status === 429 || /seconds|rate limit/i.test(error.message || "");
+    alert(
+      rateLimited
+        ? "Aguarde cerca de um minuto antes de reenviar o link para esse cliente."
+        : `Não foi possível enviar o link: ${error.message}`
+    );
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+    return;
+  }
+
+  btn.textContent = "Link enviado ✓";
+  // O Supabase limita o reenvio a 1 vez por minuto por usuário.
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }, 60000);
+}
+
 async function renderClientesTab() {
   const content = document.getElementById("admin-content");
   content.innerHTML = `
     <h2>Clientes</h2>
     <p class="admin-sub">Histórico por cliente. Destacamos quem não retorna há mais de 45 dias e aniversariantes dos próximos 14 dias.</p>
     <table class="admin-table">
-      <thead><tr><th>Cliente</th><th>Contato</th><th>Aniversário</th><th>Atendimentos</th><th>Último atendimento</th><th></th></tr></thead>
-      <tbody id="clients-tbody"><tr><td colspan="6">Carregando…</td></tr></tbody>
+      <thead><tr><th>Cliente</th><th>Contato</th><th>Aniversário</th><th>Atendimentos</th><th>Último atendimento</th><th></th><th>Senha</th></tr></thead>
+      <tbody id="clients-tbody"><tr><td colspan="7">Carregando…</td></tr></tbody>
     </table>`;
 
   const { data, error } = await supabaseClient.rpc("get_client_summary");
   const tbody = document.getElementById("clients-tbody");
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="6">Não foi possível carregar os clientes.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7">Não foi possível carregar os clientes.</td></tr>`;
     return;
   }
 
   if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6">Nenhum cliente ainda.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7">Nenhum cliente ainda.</td></tr>`;
     return;
+  }
+
+  // Descobre quais e-mails têm conta (cliente de guest checkout pode não ter).
+  // accountEmails = null significa que não foi possível verificar (função SQL ainda não criada).
+  const emails = [
+    ...new Set(data.map((c) => (c.customer_email || "").trim().toLowerCase()).filter(Boolean)),
+  ];
+  let accountEmails = null;
+  if (emails.length > 0) {
+    const { data: withAccount, error: accountError } = await supabaseClient.rpc(
+      "admin_emails_with_account",
+      { p_emails: emails }
+    );
+    if (!accountError && Array.isArray(withAccount)) {
+      accountEmails = new Set(withAccount.map((e) => String(e).toLowerCase()));
+    }
+  }
+
+  function passwordCell(c, idx) {
+    const email = (c.customer_email || "").trim();
+    if (!email) {
+      return `<span style="color:var(--color-text-soft); font-size:0.82rem;">Sem e-mail</span>`;
+    }
+    if (accountEmails && !accountEmails.has(email.toLowerCase())) {
+      return `<span class="badge off" title="Esse e-mail não tem conta criada (agendou como convidado)">Sem conta</span>`;
+    }
+    return `<button class="btn-icon" data-reset="${idx}">Redefinir senha</button>`;
   }
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 45);
 
   tbody.innerHTML = data
-    .map((c) => {
+    .map((c, idx) => {
       const lastDate = c.last_appointment_date ? new Date(c.last_appointment_date) : null;
       const inactive = lastDate && lastDate < cutoff;
       const daysUntil = daysUntilBirthday(c.birthday);
@@ -1184,8 +1253,8 @@ async function renderClientesTab() {
 
       return `
       <tr>
-        <td>${c.customer_name}</td>
-        <td>${c.customer_phone}${c.customer_email ? `<br><span style="color:var(--color-text-soft); font-size:0.82rem;">${c.customer_email}</span>` : ""}</td>
+        <td>${escapeHtml(c.customer_name)}</td>
+        <td>${escapeHtml(c.customer_phone)}${c.customer_email ? `<br><span style="color:var(--color-text-soft); font-size:0.82rem;">${escapeHtml(c.customer_email)}</span>` : ""}</td>
         <td>${c.birthday ? formatBirthdayShort(c.birthday) : "—"}</td>
         <td>${c.total_appointments}</td>
         <td>${formatDateBR(c.last_appointment_date)}</td>
@@ -1193,9 +1262,17 @@ async function renderClientesTab() {
           ${inactive ? `<span class="badge off">Sem retorno</span>` : ""}
           ${isSoonBirthday ? `<span class="badge on">🎂 ${daysUntil === 0 ? "Hoje!" : `em ${daysUntil}d`}</span>` : ""}
         </td>
+        <td>${passwordCell(c, idx)}</td>
       </tr>`;
     })
     .join("");
+
+  tbody.querySelectorAll("[data-reset]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const client = data[Number(btn.dataset.reset)];
+      sendClientResetLink((client.customer_email || "").trim(), btn);
+    });
+  });
 }
 
 // =========================================================
