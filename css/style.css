@@ -811,12 +811,8 @@ button {
   box-shadow: var(--shadow-card);
 }
 
-.gallery-images {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
 
-.gallery-images figure {
+.gallery-compare {
   margin: 0;
   position: relative;
   overflow: hidden;
@@ -824,22 +820,21 @@ button {
   background: var(--color-bg);
 }
 
-.gallery-images img {
+.gallery-compare img {
   display: block;
   width: 100%;
   height: auto;
   transition: transform 0.35s ease;
 }
 
-.gallery-images figure:hover img,
-.gallery-images figure:focus-within img {
-  transform: scale(1.08);
+.gallery-compare:hover img,
+.gallery-compare:focus-within img {
+  transform: scale(1.06);
 }
 
-.gallery-images figcaption {
+.compare-label {
   position: absolute;
   top: 10px;
-  left: 10px;
   background: rgba(43, 38, 32, 0.7);
   color: #fff;
   font-size: 0.7rem;
@@ -849,6 +844,9 @@ button {
   border-radius: var(--radius-pill);
   pointer-events: none;
 }
+
+.compare-label.left { left: 10px; }
+.compare-label.right { right: 10px; }
 
 /* ---------- Lightbox (ampliar foto da galeria) ---------- */
 .lightbox-overlay {

@@ -1,39 +1,26 @@
 // =========================================================
 // Galeria de resultados (antes/depois) — home
-// Para adicionar um novo par de fotos, é só adicionar um objeto
-// nessa lista com o título e os caminhos das imagens.
+// Cada item usa UMA imagem só, já com antes (metade esquerda) e
+// depois (metade direita) lado a lado. Pra adicionar um novo par,
+// é só incluir um objeto novo na lista abaixo.
 // =========================================================
 
 const GALLERY_ITEMS = [
   {
     title: "Limpeza de Pele",
-    before: "img/resultados/limpeza-pele-1-antes.jpg",
-    after: "img/resultados/limpeza-pele-1-depois.jpg",
-  },
-  {
-    title: "Limpeza de Pele",
-    before: "img/resultados/limpeza-pele-2-antes.jpg",
-    after: "img/resultados/limpeza-pele-2-depois.jpg",
-  },
-  {
-    title: "Laser Remoção de Micose",
-    before: "img/resultados/laser-micose-antes.jpg",
-    after: "img/resultados/laser-micose-depois.jpg",
-  },
-  {
-    title: "Laser Faixa de Barba",
-    before: "img/resultados/laser-barba-antes.jpg",
-    after: "img/resultados/laser-barba-depois.jpg",
-  },
-  {
-    title: "Laser Faixa de Barba",
-    before: "img/resultados/laser-barba-2-antes.jpg",
-    after: "img/resultados/laser-barba-2-depois.jpg",
+    image: "img/resultados/limpeza-pele.jpg",
   },
   {
     title: "Tratamento para Melasma",
-    before: "img/resultados/melasma-antes.jpg",
-    after: "img/resultados/melasma-depois.jpg",
+    image: "img/resultados/melasma.jpg",
+  },
+  {
+    title: "Laser Faixa de Barba",
+    image: "img/resultados/laser-barba.jpg",
+  },
+  {
+    title: "Laser Faixa de Barba",
+    image: "img/resultados/laser-barba-2.jpg",
   },
 ];
 
@@ -44,16 +31,11 @@ function renderGallery() {
   grid.innerHTML = GALLERY_ITEMS.map(
     (item) => `
     <div class="gallery-card">
-      <div class="gallery-images">
-        <figure>
-          <img src="${item.before}" alt="${item.title} — antes" loading="lazy" class="zoomable" />
-          <figcaption>Antes</figcaption>
-        </figure>
-        <figure>
-          <img src="${item.after}" alt="${item.title} — depois" loading="lazy" class="zoomable" />
-          <figcaption>Depois</figcaption>
-        </figure>
-      </div>
+      <figure class="gallery-compare">
+        <img src="${item.image}" alt="${item.title} — antes e depois" loading="lazy" class="zoomable" />
+        <span class="compare-label left">Antes</span>
+        <span class="compare-label right">Depois</span>
+      </figure>
       <div class="gallery-card-title">${item.title}</div>
     </div>`
   ).join("");
