@@ -1666,6 +1666,17 @@ button {
 .metric-card .delta.positive { color: var(--color-success); }
 .metric-card .delta.negative { color: var(--color-danger); }
 
+.client-history-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.admin-table tr.muted-row td {
+  color: var(--color-text-soft);
+}
+
 /* ---------- Calendário do admin (dias com agendamento) ---------- */
 .calendar-day {
   position: relative;
@@ -1707,6 +1718,23 @@ button {
 
 .day-appointment-card .info span {
   font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.day-appointment-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-gold-dark);
+}
+
+.day-appointment-value .btn-icon {
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 500;
   color: var(--color-text-muted);
 }
 

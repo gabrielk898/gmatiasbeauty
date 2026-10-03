@@ -1477,21 +1477,53 @@ async function openClientHistoryModal(client) {
     return;
   }
 
+  const completedAppointments = data.filter((a) => a.status === "completed");
+  const totalSpentCents = completedAppointments.reduce(
+    (sum, a) => sum + (a.final_price_cents ?? a.service?.price_cents ?? 0),
+    0
+  );
+  const avgTicketCents = completedAppointments.length ? totalSpentCents / completedAppointments.length : 0;
+
+  const summaryHtml = `
+    <div class="client-history-summary">
+      <div class="metric-card">
+        <div class="label">Atendimentos concluídos</div>
+        <div class="value">${completedAppointments.length}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Total gasto</div>
+        <div class="value">${formatPrice(totalSpentCents)}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Ticket médio</div>
+        <div class="value">${formatPrice(avgTicketCents)}</div>
+      </div>
+    </div>`;
+
   body.innerHTML = `
+    ${summaryHtml}
     <table class="admin-table">
       <thead><tr><th>Data</th><th>Horário</th><th>Serviço</th><th>Valor</th><th>Status</th></tr></thead>
       <tbody>
         ${data
-          .map(
-            (a) => `
-          <tr>
+          .map((a) => {
+            const isCompleted = a.status === "completed";
+            const value = isCompleted
+              ? a.final_price_cents != null
+                ? formatPrice(a.final_price_cents)
+                : a.service?.price_cents != null
+                ? formatPrice(a.service.price_cents)
+                : "—"
+              : "—";
+            return `
+          <tr class="${isCompleted ? "" : "muted-row"}">
             <td>${formatDateBR(a.appointment_date)}</td>
             <td>${(a.start_time || "").slice(0, 5)}</td>
             <td>${escapeHtml(a.service?.name || "—")}</td>
-            <td>${a.final_price_cents != null ? formatPrice(a.final_price_cents) : a.service?.price_cents != null ? formatPrice(a.service.price_cents) : "—"}</td>
-            <td><span class="badge ${a.status === "completed" ? "on" : "off"}">${STATUS_LABELS[a.status] || a.status}</span></td>
-          </tr>`
-          )
+            <td>${value}</td>
+            <td><span class="badge ${isCompleted ? "on" : "off"}">${STATUS_LABELS[a.status] || a.status}</span></td>
+          </tr>`;
+          })
           .join("")}
       </tbody>
     </table>`;
