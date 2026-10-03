@@ -1045,7 +1045,6 @@ button {
 .service-group-chevron {
   color: var(--color-text-soft);
   transition: transform 0.15s ease;
-  font-size: 1.1rem;
   flex-shrink: 0;
 }
 .service-group.collapsed .service-group-chevron { transform: rotate(-90deg); }
@@ -1060,14 +1059,44 @@ button {
   border-radius: 0;
   box-shadow: none;
   border-bottom: 1px solid var(--color-border);
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s ease;
 }
 .service-page-card.in-group:last-child { border-bottom: none; }
+.service-page-card.in-group:hover,
+.service-page-card.in-group:focus-visible {
+  background: var(--color-bg);
+}
+
+.service-card-arrow {
+  flex-shrink: 0;
+  color: var(--color-gold-dark);
+  font-size: 1.15rem;
+  margin-left: 2px;
+}
 
 .service-price-from-label {
   display: block;
-  font-weight: 500;
-  font-size: 0.72rem;
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--color-text-soft);
+  line-height: 1.5;
+}
+.service-price-from-label.is-empty { visibility: hidden; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ---------- Portal do cliente ---------- */

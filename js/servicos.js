@@ -13,7 +13,7 @@ function formatDuration(minutes) {
 
 function serviceCardHtml(s) {
   return `
-    <div class="service-page-card in-group">
+    <a href="agendar.html?service=${s.id}" class="service-page-card in-group">
       <div class="icon">${s.icon || "✨"}</div>
       <div class="info">
         <h3>${s.name}</h3>
@@ -21,11 +21,12 @@ function serviceCardHtml(s) {
         <div class="duration">🕐 ${formatDuration(s.duration_minutes)}</div>
       </div>
       <div class="price-block">
-        ${s.price_is_from ? `<span class="service-price-from-label">A partir de</span>` : ""}
+        <span class="service-price-from-label${s.price_is_from ? "" : " is-empty"}">A partir de</span>
         <span class="price">${formatPrice(s.price_cents)}</span>
-        <a href="agendar.html?service=${s.id}">Agendar →</a>
       </div>
-    </div>`;
+      <span class="service-card-arrow" aria-hidden="true">→</span>
+      <span class="sr-only">Agendar ${s.name}</span>
+    </a>`;
 }
 
 function groupByCategory(services) {
@@ -46,6 +47,12 @@ function groupByCategory(services) {
 
   return groups;
 }
+
+const CHEVRON_SVG = `
+  <svg class="service-group-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polyline points="6 9 12 15 18 9"></polyline>
+  </svg>`;
 
 async function loadServicesPage() {
   const list = document.getElementById("service-page-list");
@@ -83,7 +90,7 @@ async function loadServicesPage() {
               <span class="service-group-count">${g.items.length} ${g.items.length === 1 ? "serviço" : "serviços"}</span>
             </span>
           </span>
-          <span class="service-group-chevron">▾</span>
+          ${CHEVRON_SVG}
         </button>
         <div class="service-group-body">
           ${g.items.map(serviceCardHtml).join("")}
