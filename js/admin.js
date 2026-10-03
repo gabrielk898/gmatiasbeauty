@@ -1027,8 +1027,16 @@ function renderAdminDayList() {
       (a) => `
       <div class="day-appointment-card">
         <div class="info">
-          <strong>${a.start_time.slice(0, 5)} · ${a.service?.name || "Serviço"}</strong>
-          <span>${a.customer_name} · ${a.customer_phone}</span>
+          <strong>${a.start_time.slice(0, 5)} · ${escapeHtml(a.service?.name || "Serviço")}</strong>
+          <span>${escapeHtml(a.customer_name)} · ${escapeHtml(a.customer_phone)}</span>
+          ${
+            a.status === "completed" && a.final_price_cents != null
+              ? `<span class="day-appointment-value">
+                   ${formatPrice(a.final_price_cents)}
+                   <button type="button" class="btn-icon" data-edit-value="${a.id}">Editar valor</button>
+                 </span>`
+              : ""
+          }
         </div>
         <select data-status-id="${a.id}">
           ${STATUS_OPTIONS.map(
@@ -1041,6 +1049,15 @@ function renderAdminDayList() {
 
   container.querySelectorAll("[data-status-id]").forEach((select) => {
     select.addEventListener("change", async () => {
+      const item = adminState.calMonthAppointments.find((a) => a.id === select.dataset.statusId);
+
+      // Concluir pede confirmação do valor realmente cobrado — o serviço
+      // pode ter preço "a partir de", que varia de cliente pra cliente.
+      if (select.value === "completed") {
+        openCompleteAppointmentModal(item, select);
+        return;
+      }
+
       const { error } = await supabaseClient
         .from("appointments")
         .update({ status: select.value })
@@ -1049,9 +1066,141 @@ function renderAdminDayList() {
         alert("Não foi possível atualizar o status.");
         return;
       }
-      const item = adminState.calMonthAppointments.find((a) => a.id === select.dataset.statusId);
       if (item) item.status = select.value;
     });
+  });
+
+  container.querySelectorAll("[data-edit-value]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const item = adminState.calMonthAppointments.find((a) => a.id === btn.dataset.editValue);
+      const select = container.querySelector(`[data-status-id="${btn.dataset.editValue}"]`);
+      openCompleteAppointmentModal(item, select);
+    });
+  });
+}
+
+function openCompleteAppointmentModal(appt, selectEl) {
+  const previousStatus = appt.status;
+  const defaultCents = appt.final_price_cents ?? appt.service?.price_cents ?? 0;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal">
+      <button type="button" class="modal-close" aria-label="Fechar">✕</button>
+      <h2>Confirmar atendimento</h2>
+      <p class="admin-sub" style="margin-top:-12px; text-align:center;">
+        ${escapeHtml(appt.customer_name)} · ${escapeHtml(appt.service?.name || "Serviço")}
+      </p>
+      <form id="complete-form">
+        <div class="form-field">
+          <label>Valor cobrado (R$)</label>
+          <input type="text" id="complete-price-input" required value="${centsToReaisInput(defaultCents)}" />
+          ${
+            appt.service?.price_is_from
+              ? `<p style="font-size:0.8rem; color:var(--color-text-soft); margin-top:6px;">Esse serviço é "a partir de" — confira o valor realmente cobrado.</p>`
+              : ""
+          }
+        </div>
+        <p id="complete-form-error" class="form-error hidden"></p>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <button type="submit" class="btn btn-primary">Confirmar conclusão</button>
+          <button type="button" class="btn btn-secondary" id="complete-form-cancel">Cancelar</button>
+        </div>
+      </form>
+      <div id="price-change-history"></div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  // Histórico de alterações de valor desse agendamento (se houver)
+  supabaseClient
+    .from("appointment_price_changes")
+    .select("previous_price_cents, new_price_cents, changed_at")
+    .eq("appointment_id", appt.id)
+    .order("changed_at", { ascending: false })
+    .then(({ data, error }) => {
+      if (error || !data || data.length === 0) return;
+      const historyEl = overlay.querySelector("#price-change-history");
+      if (!historyEl) return; // modal já foi fechado antes de a consulta voltar
+      historyEl.innerHTML = `
+        <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--color-border);">
+          <p style="font-size:0.75rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--color-text-soft); margin-bottom:8px;">Histórico de alterações</p>
+          ${data
+            .map((h) => {
+              const when = new Date(h.changed_at).toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              return `
+              <p style="font-size:0.82rem; color:var(--color-text-muted); margin-bottom:4px;">
+                ${h.previous_price_cents != null ? formatPrice(h.previous_price_cents) : "—"} → <strong>${formatPrice(h.new_price_cents)}</strong>
+                <span style="color:var(--color-text-soft);"> · ${when}</span>
+              </p>`;
+            })
+            .join("")}
+        </div>`;
+    });
+
+  function close() {
+    overlay.remove();
+  }
+
+  function cancelAndRevert() {
+    selectEl.value = previousStatus;
+    close();
+  }
+
+  overlay.querySelector(".modal-close").addEventListener("click", cancelAndRevert);
+  overlay.querySelector("#complete-form-cancel").addEventListener("click", cancelAndRevert);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) cancelAndRevert();
+  });
+
+  overlay.querySelector("#complete-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = overlay.querySelector("#complete-form-error");
+    errorEl.classList.add("hidden");
+
+    const cents = reaisToCents(overlay.querySelector("#complete-price-input").value);
+    if (!cents || cents <= 0) {
+      errorEl.textContent = "Informe um valor válido.";
+      errorEl.classList.remove("hidden");
+      return;
+    }
+
+    const { error } = await supabaseClient
+      .from("appointments")
+      .update({ status: "completed", final_price_cents: cents })
+      .eq("id", appt.id);
+
+    if (error) {
+      errorEl.textContent = "Não foi possível salvar. Tente novamente.";
+      errorEl.classList.remove("hidden");
+      return;
+    }
+
+    // Registra no histórico só quando o valor realmente mudou, pra não
+    // poluir com reconfirmações do mesmo número.
+    if (cents !== defaultCents) {
+      supabaseClient
+        .from("appointment_price_changes")
+        .insert({
+          appointment_id: appt.id,
+          previous_price_cents: defaultCents,
+          new_price_cents: cents,
+          changed_by: adminState.user?.id || null,
+        })
+        .then(({ error: logError }) => {
+          if (logError) console.error("Falha ao registrar histórico de valor:", logError);
+        });
+    }
+
+    appt.status = "completed";
+    appt.final_price_cents = cents;
+    close();
+    renderAdminDayList();
   });
 }
 
@@ -1098,7 +1247,7 @@ async function renderFaturamentoTab() {
       .lte("appointment_date", thisMonth.end),
     supabaseClient
       .from("appointments")
-      .select("status, service:services(price_cents)")
+      .select("status, final_price_cents, service:services(price_cents)")
       .gte("appointment_date", prevMonth.start)
       .lte("appointment_date", prevMonth.end),
   ]);
@@ -1106,11 +1255,16 @@ async function renderFaturamentoTab() {
   const currentList = current || [];
   const previousList = previous || [];
 
+  // Usa o valor realmente cobrado (confirmado ao concluir o atendimento)
+  // quando existir; cai no preço de tabela do serviço como estimativa
+  // só para atendimentos ainda não concluídos dessa forma.
+  const appointmentValue = (a) => a.final_price_cents ?? a.service?.price_cents ?? 0;
+
   const completed = currentList.filter((a) => a.status === "completed");
-  const revenue = completed.reduce((sum, a) => sum + (a.service?.price_cents || 0), 0);
+  const revenue = completed.reduce((sum, a) => sum + appointmentValue(a), 0);
   const prevRevenue = previousList
     .filter((a) => a.status === "completed")
-    .reduce((sum, a) => sum + (a.service?.price_cents || 0), 0);
+    .reduce((sum, a) => sum + appointmentValue(a), 0);
 
   const cancelledOrNoShow = currentList.filter((a) => a.status === "cancelled" || a.status === "no_show").length;
   const avgTicket = completed.length ? revenue / completed.length : 0;
@@ -1144,7 +1298,7 @@ async function renderFaturamentoTab() {
   const byService = {};
   completed.forEach((a) => {
     const name = a.service?.name || "Outro";
-    byService[name] = (byService[name] || 0) + (a.service?.price_cents || 0);
+    byService[name] = (byService[name] || 0) + appointmentValue(a);
   });
 
   const labels = Object.keys(byService);
@@ -1334,7 +1488,7 @@ async function openClientHistoryModal(client) {
             <td>${formatDateBR(a.appointment_date)}</td>
             <td>${(a.start_time || "").slice(0, 5)}</td>
             <td>${escapeHtml(a.service?.name || "—")}</td>
-            <td>${a.service?.price_cents != null ? formatPrice(a.service.price_cents) : "—"}</td>
+            <td>${a.final_price_cents != null ? formatPrice(a.final_price_cents) : a.service?.price_cents != null ? formatPrice(a.service.price_cents) : "—"}</td>
             <td><span class="badge ${a.status === "completed" ? "on" : "off"}">${STATUS_LABELS[a.status] || a.status}</span></td>
           </tr>`
           )
