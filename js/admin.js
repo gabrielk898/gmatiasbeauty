@@ -37,6 +37,10 @@ function formatPrice(cents) {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function formatServicePrice(s) {
+  return `${s.price_is_from ? "A partir de " : ""}${formatPrice(s.price_cents)}`;
+}
+
 function formatDuration(minutes) {
   if (minutes > 60) {
     const hours = Math.floor(minutes / 60);
@@ -364,10 +368,10 @@ async function renderServicosTab() {
     <div id="service-form-slot"></div>
     <table class="admin-table">
       <thead>
-        <tr><th>Nome</th><th>Duração</th><th>Preço</th><th>Status</th><th></th></tr>
+        <tr><th>Nome</th><th>Categoria</th><th>Duração</th><th>Preço</th><th>Status</th><th></th></tr>
       </thead>
       <tbody id="services-tbody">
-        <tr><td colspan="5">Carregando…</td></tr>
+        <tr><td colspan="6">Carregando…</td></tr>
       </tbody>
     </table>`;
 
@@ -380,14 +384,14 @@ async function renderServicosTab() {
   const tbody = document.getElementById("services-tbody");
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="5">Não foi possível carregar os serviços.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">Não foi possível carregar os serviços.</td></tr>`;
     return;
   }
 
   adminState.services = data || [];
 
   if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5">Nenhum serviço cadastrado ainda.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">Nenhum serviço cadastrado ainda.</td></tr>`;
     return;
   }
 
@@ -395,9 +399,10 @@ async function renderServicosTab() {
     .map(
       (s) => `
       <tr>
-        <td>${s.icon || "✨"} ${s.name}</td>
+        <td>${s.icon || "✨"} ${escapeHtml(s.name)}</td>
+        <td>${s.category ? escapeHtml(s.category) : `<span style="color:var(--color-text-soft);">—</span>`}</td>
         <td>${formatDuration(s.duration_minutes)}</td>
-        <td>${formatPrice(s.price_cents)}</td>
+        <td>${formatServicePrice(s)}</td>
         <td><span class="badge ${s.active ? "on" : "off"}">${s.active ? "Ativo" : "Inativo"}</span></td>
         <td>
           <div class="actions">
@@ -451,9 +456,24 @@ function renderServiceForm() {
             <input type="number" id="sf-sort" value="${editing?.sort_order ?? 0}" />
           </div>
           <div class="form-field">
+            <label>Categoria</label>
+            <input type="text" id="sf-category" list="sf-category-list" value="${editing?.category ? escapeHtml(editing.category) : ""}" placeholder="Ex: Laser" />
+            <datalist id="sf-category-list">
+              ${[...new Set(adminState.services.map((s) => s.category).filter(Boolean))]
+                .map((c) => `<option value="${escapeHtml(c)}"></option>`)
+                .join("")}
+            </datalist>
+          </div>
+          <div class="form-field">
             <label class="checkbox-field" style="margin-top: 28px;">
               <input type="checkbox" id="sf-active" ${editing?.active !== false ? "checked" : ""} />
               Serviço ativo (visível para clientes)
+            </label>
+          </div>
+          <div class="form-field">
+            <label class="checkbox-field" style="margin-top: 28px;">
+              <input type="checkbox" id="sf-price-from" ${editing?.price_is_from ? "checked" : ""} />
+              Preço "a partir de"
             </label>
           </div>
         </div>
@@ -485,6 +505,8 @@ function renderServiceForm() {
       price_cents: reaisToCents(document.getElementById("sf-price").value),
       sort_order: parseInt(document.getElementById("sf-sort").value, 10) || 0,
       active: document.getElementById("sf-active").checked,
+      category: document.getElementById("sf-category").value.trim() || null,
+      price_is_from: document.getElementById("sf-price-from").checked,
       description: document.getElementById("sf-description").value.trim() || null,
     };
 

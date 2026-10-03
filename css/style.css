@@ -990,6 +990,86 @@ button {
   border-bottom: 1px solid var(--color-gold);
 }
 
+/* ---------- Página de serviços — agrupados por categoria ---------- */
+.service-group {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.service-group-header {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 18px 22px;
+  background: var(--color-bg);
+}
+
+.service-group-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.service-group-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--color-gold-light);
+  color: var(--color-gold-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.service-group-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--color-text);
+}
+
+.service-group-count {
+  font-size: 0.8rem;
+  color: var(--color-text-soft);
+  margin-left: 8px;
+}
+
+.service-group-chevron {
+  color: var(--color-text-soft);
+  transition: transform 0.15s ease;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.service-group.collapsed .service-group-chevron { transform: rotate(-90deg); }
+
+.service-group-body {
+  border-top: 1px solid var(--color-border);
+}
+.service-group.collapsed .service-group-body { display: none; }
+
+.service-page-card.in-group {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  border-bottom: 1px solid var(--color-border);
+}
+.service-page-card.in-group:last-child { border-bottom: none; }
+
+.service-price-from-label {
+  display: block;
+  font-weight: 500;
+  font-size: 0.72rem;
+  color: var(--color-text-soft);
+}
+
 /* ---------- Portal do cliente ---------- */
 .portal-section {
   max-width: 480px;
