@@ -123,11 +123,14 @@ async function loadServices() {
     btn.addEventListener("click", () => selectService(btn.dataset.id));
   });
 
-  // Pré-seleciona se veio ?service=ID da home
+  // Pré-seleciona se veio ?service=ID (home ou página de serviços).
+  // Nesse caso o cliente já decidiu o serviço, então pulamos direto
+  // para o passo 2 — ver loadServices() em init().
   const params = new URLSearchParams(window.location.search);
   const preselect = params.get("service");
   if (preselect && data.some((s) => s.id === preselect)) {
     selectService(preselect);
+    state.cameFromServiceLink = true;
   }
 }
 
@@ -544,4 +547,11 @@ document.getElementById("create-account-btn").addEventListener("click", () => {
 (async function init() {
   renderStepper();
   await Promise.all([loadServices(), loadBusinessHours(), loadScheduleBlocks()]);
+
+  // Serviço já veio escolhido (link de Serviços ou da home): pula o passo 1.
+  // "businessHours" já está carregado aqui, então o calendário do passo 2
+  // renderiza corretamente de primeira.
+  if (state.cameFromServiceLink) {
+    goToStep(2);
+  }
 })();
