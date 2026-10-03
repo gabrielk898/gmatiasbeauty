@@ -37,6 +37,15 @@ function formatPrice(cents) {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function formatDuration(minutes) {
+  if (minutes > 60) {
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return `${hours}:${String(rest).padStart(2, "0")}`;
+  }
+  return `${minutes} min`;
+}
+
 function reaisToCents(value) {
   const normalized = String(value).replace(/\./g, "").replace(",", ".");
   return Math.round(parseFloat(normalized || "0") * 100);
@@ -387,7 +396,7 @@ async function renderServicosTab() {
       (s) => `
       <tr>
         <td>${s.icon || "✨"} ${s.name}</td>
-        <td>${s.duration_minutes} min</td>
+        <td>${formatDuration(s.duration_minutes)}</td>
         <td>${formatPrice(s.price_cents)}</td>
         <td><span class="badge ${s.active ? "on" : "off"}">${s.active ? "Ativo" : "Inativo"}</span></td>
         <td>
