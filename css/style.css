@@ -411,6 +411,16 @@ button {
 
 .service-option .chevron { color: var(--color-text-soft); }
 
+.service-list-category {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-soft);
+  font-weight: 600;
+  margin-top: 10px;
+}
+.service-list-category:first-child { margin-top: 0; }
+
 /* ---------- Card genérico (calendário, horários, resumo) ---------- */
 .card {
   background: var(--color-surface);

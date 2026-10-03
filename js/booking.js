@@ -8,6 +8,7 @@ const MONTH_LABELS = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 const SLOT_INTERVAL_MINUTES = 15;
+const AUTO_ADVANCE_DELAY = 300; // ms — tempo pra o cliente ver a seleção antes de avançar
 
 const state = {
   step: 1,
@@ -105,27 +106,57 @@ async function loadServices() {
   }
 
   state.services = data;
-  list.innerHTML = data
+
+  // Agrupa por categoria (mesma lógica da página de Serviços), mas aqui
+  // sem collapse: é um passo de formulário, não uma página de navegação —
+  // só o título da categoria separa os grupos visualmente.
+  const groups = [];
+  const byKey = new Map();
+  const SEM_CATEGORIA = "Outros serviços";
+  data.forEach((s) => {
+    const label = (s.category || "").trim() || SEM_CATEGORIA;
+    const key = label.toLowerCase();
+    if (!byKey.has(key)) {
+      const group = { label, items: [] };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+    byKey.get(key).items.push(s);
+  });
+
+  const serviceButtonHtml = (s) => `
+    <button type="button" class="service-option" data-id="${s.id}">
+      <div class="icon">${s.icon || "✨"}</div>
+      <div class="info">
+        <h3>${s.name}</h3>
+        <div class="duration">🕐 ${s.duration_minutes} min</div>
+      </div>
+      <div class="chevron">›</div>
+    </button>`;
+
+  list.innerHTML = groups
     .map(
-      (s) => `
-      <button type="button" class="service-option" data-id="${s.id}">
-        <div class="icon">${s.icon || "✨"}</div>
-        <div class="info">
-          <h3>${s.name}</h3>
-          <div class="duration">🕐 ${s.duration_minutes} min</div>
-        </div>
-        <div class="chevron">›</div>
-      </button>`
+      (g) => `
+      <div class="service-list-category">${g.label}</div>
+      ${g.items.map(serviceButtonHtml).join("")}`
     )
     .join("");
 
   list.querySelectorAll(".service-option").forEach((btn) => {
-    btn.addEventListener("click", () => selectService(btn.dataset.id));
+    btn.addEventListener("click", () => {
+      selectService(btn.dataset.id);
+      // Escolher o serviço é uma decisão única — avança sem pedir
+      // confirmação extra em "Continuar".
+      setTimeout(() => goToStep(2), AUTO_ADVANCE_DELAY);
+    });
   });
+
+  // O botão "Continuar" deste passo fica sem uso com o avanço automático.
+  document.getElementById("step1-continue").classList.add("hidden");
 
   // Pré-seleciona se veio ?service=ID (home ou página de serviços).
   // Nesse caso o cliente já decidiu o serviço, então pulamos direto
-  // para o passo 2 — ver loadServices() em init().
+  // para o passo 2 — ver init().
   const params = new URLSearchParams(window.location.search);
   const preselect = params.get("service");
   if (preselect && data.some((s) => s.id === preselect)) {
@@ -213,11 +244,18 @@ function renderCalendar() {
   grid.innerHTML = cells;
 
   grid.querySelectorAll(".calendar-day.selectable").forEach((btn) => {
-    btn.addEventListener("click", () => selectDate(btn.dataset.date));
+    btn.addEventListener("click", () => {
+      selectDate(btn.dataset.date);
+      // Escolher a data também é uma decisão única — avança direto.
+      setTimeout(() => goToStep(3), AUTO_ADVANCE_DELAY);
+    });
   });
 
   document.getElementById("cal-prev").disabled =
     year === new Date().getFullYear() && month === new Date().getMonth();
+
+  // O botão "Continuar" deste passo fica sem uso com o avanço automático.
+  document.getElementById("step2-continue").classList.add("hidden");
 }
 
 function selectDate(iso) {
