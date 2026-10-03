@@ -1168,53 +1168,148 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function normalizeSearch(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 async function renderClientesTab() {
   const content = document.getElementById("admin-content");
   content.innerHTML = `
     <h2>Clientes</h2>
     <p class="admin-sub">Histórico por cliente. Destacamos quem não retorna há mais de 45 dias e aniversariantes dos próximos 14 dias.</p>
+    <div class="admin-toolbar">
+      <input type="search" id="clients-search" class="clients-search" placeholder="Buscar cliente pelo nome…" />
+    </div>
     <table class="admin-table">
-      <thead><tr><th>Cliente</th><th>Contato</th><th>Aniversário</th><th>Atendimentos</th><th>Último atendimento</th><th></th></tr></thead>
-      <tbody id="clients-tbody"><tr><td colspan="6">Carregando…</td></tr></tbody>
+      <thead><tr><th>Cliente</th><th>Contato</th><th>Aniversário</th><th>Atendimentos</th><th>Último atendimento</th><th></th><th></th></tr></thead>
+      <tbody id="clients-tbody"><tr><td colspan="7">Carregando…</td></tr></tbody>
     </table>`;
 
   const { data, error } = await supabaseClient.rpc("get_client_summary");
   const tbody = document.getElementById("clients-tbody");
+  const searchInput = document.getElementById("clients-search");
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="6">Não foi possível carregar os clientes.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7">Não foi possível carregar os clientes.</td></tr>`;
     return;
   }
 
   if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6">Nenhum cliente ainda.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7">Nenhum cliente ainda.</td></tr>`;
     return;
   }
 
+  const allClients = data;
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 45);
 
-  tbody.innerHTML = data
-    .map((c) => {
-      const lastDate = c.last_appointment_date ? new Date(c.last_appointment_date) : null;
-      const inactive = lastDate && lastDate < cutoff;
-      const daysUntil = daysUntilBirthday(c.birthday);
-      const isSoonBirthday = daysUntil !== null && daysUntil <= 14;
+  function renderRows(list) {
+    if (list.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7">Nenhum cliente encontrado para essa busca.</td></tr>`;
+      return;
+    }
 
-      return `
-      <tr>
-        <td>${escapeHtml(c.customer_name)}</td>
-        <td>${escapeHtml(c.customer_phone)}${c.customer_email ? `<br><span style="color:var(--color-text-soft); font-size:0.82rem;">${escapeHtml(c.customer_email)}</span>` : ""}</td>
-        <td>${c.birthday ? formatBirthdayShort(c.birthday) : "—"}</td>
-        <td>${c.total_appointments}</td>
-        <td>${formatDateBR(c.last_appointment_date)}</td>
-        <td>
-          ${inactive ? `<span class="badge off">Sem retorno</span>` : ""}
-          ${isSoonBirthday ? `<span class="badge on">🎂 ${daysUntil === 0 ? "Hoje!" : `em ${daysUntil}d`}</span>` : ""}
-        </td>
-      </tr>`;
-    })
-    .join("");
+    tbody.innerHTML = list
+      .map((c, idx) => {
+        const lastDate = c.last_appointment_date ? new Date(c.last_appointment_date) : null;
+        const inactive = lastDate && lastDate < cutoff;
+        const daysUntil = daysUntilBirthday(c.birthday);
+        const isSoonBirthday = daysUntil !== null && daysUntil <= 14;
+
+        return `
+        <tr>
+          <td>${escapeHtml(c.customer_name)}</td>
+          <td>${escapeHtml(c.customer_phone)}${c.customer_email ? `<br><span style="color:var(--color-text-soft); font-size:0.82rem;">${escapeHtml(c.customer_email)}</span>` : ""}</td>
+          <td>${c.birthday ? formatBirthdayShort(c.birthday) : "—"}</td>
+          <td>${c.total_appointments}</td>
+          <td>${formatDateBR(c.last_appointment_date)}</td>
+          <td>
+            ${inactive ? `<span class="badge off">Sem retorno</span>` : ""}
+            ${isSoonBirthday ? `<span class="badge on">🎂 ${daysUntil === 0 ? "Hoje!" : `em ${daysUntil}d`}</span>` : ""}
+          </td>
+          <td><button type="button" class="btn-icon" data-history="${idx}">Histórico</button></td>
+        </tr>`;
+      })
+      .join("");
+
+    tbody.querySelectorAll("[data-history]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        openClientHistoryModal(list[Number(btn.dataset.history)]);
+      });
+    });
+  }
+
+  renderRows(allClients);
+
+  searchInput.addEventListener("input", () => {
+    const term = normalizeSearch(searchInput.value.trim());
+    const filtered = term
+      ? allClients.filter((c) => normalizeSearch(c.customer_name).includes(term))
+      : allClients;
+    renderRows(filtered);
+  });
+}
+
+async function openClientHistoryModal(client) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal modal-wide">
+      <button type="button" class="modal-close" aria-label="Fechar">✕</button>
+      <h2>${escapeHtml(client.customer_name)}</h2>
+      <p class="admin-sub" style="margin-top:-12px;">${escapeHtml(client.customer_phone)}${client.customer_email ? ` · ${escapeHtml(client.customer_email)}` : ""}</p>
+      <div id="client-history-body">Carregando…</div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  function close() {
+    overlay.remove();
+  }
+  overlay.querySelector(".modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+
+  const body = overlay.querySelector("#client-history-body");
+
+  const { data, error } = await supabaseClient
+    .from("appointments")
+    .select("*, service:services(name, price_cents)")
+    .eq("customer_phone", client.customer_phone)
+    .order("appointment_date", { ascending: false })
+    .order("start_time", { ascending: false });
+
+  if (error) {
+    body.innerHTML = `<p class="form-error">Não foi possível carregar o histórico.</p>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    body.innerHTML = `<p class="admin-sub">Nenhum atendimento encontrado para esse cliente.</p>`;
+    return;
+  }
+
+  body.innerHTML = `
+    <table class="admin-table">
+      <thead><tr><th>Data</th><th>Horário</th><th>Serviço</th><th>Valor</th><th>Status</th></tr></thead>
+      <tbody>
+        ${data
+          .map(
+            (a) => `
+          <tr>
+            <td>${formatDateBR(a.appointment_date)}</td>
+            <td>${(a.start_time || "").slice(0, 5)}</td>
+            <td>${escapeHtml(a.service?.name || "—")}</td>
+            <td>${a.service?.price_cents != null ? formatPrice(a.service.price_cents) : "—"}</td>
+            <td><span class="badge ${a.status === "completed" ? "on" : "off"}">${STATUS_LABELS[a.status] || a.status}</span></td>
+          </tr>`
+          )
+          .join("")}
+      </tbody>
+    </table>`;
 }
 // =========================================================
 // Inicialização

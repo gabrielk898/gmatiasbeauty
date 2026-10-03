@@ -747,6 +747,12 @@ button {
   position: relative;
 }
 
+.modal.modal-wide {
+  max-width: 640px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
 .modal-close {
   position: absolute;
   top: 16px;
@@ -1264,6 +1270,23 @@ button {
   margin-bottom: 20px;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.clients-search {
+  width: 100%;
+  max-width: 320px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+.clients-search:focus {
+  outline: none;
+  border-color: var(--color-gold);
+  box-shadow: 0 0 0 1px var(--color-gold);
 }
 
 .admin-table {
