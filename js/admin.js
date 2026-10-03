@@ -518,7 +518,7 @@ async function renderHorariosTab() {
   content.innerHTML = `
     <h2>Horário de Funcionamento</h2>
     <p class="admin-sub">Defina os horários semanais padrão do salão.</p>
-    <div class="admin-form-card" id="hours-form-card">Carregando…</div>`;
+    <div class="hours-card" id="hours-form-card">Carregando…</div>`;
 
   const { data, error } = await supabaseClient.from("business_hours").select("*").order("weekday");
   const card = document.getElementById("hours-form-card");
@@ -533,28 +533,39 @@ async function renderHorariosTab() {
 
   card.innerHTML = `
     <form id="hours-form">
-      ${WEEKDAY_NAMES.map((name, weekday) => {
-        const row = hoursByDay[weekday] || { open_time: "09:00", close_time: "18:00", is_closed: weekday === 0 };
-        return `
-        <div class="hours-row">
-          <span class="day-label">${name}</span>
-          <input type="time" id="hr-open-${weekday}" value="${(row.open_time || "09:00").slice(0, 5)}" ${row.is_closed ? "disabled" : ""} />
-          <input type="time" id="hr-close-${weekday}" value="${(row.close_time || "18:00").slice(0, 5)}" ${row.is_closed ? "disabled" : ""} />
-          <label class="checkbox-field">
-            <input type="checkbox" class="hr-closed" data-weekday="${weekday}" ${row.is_closed ? "checked" : ""} />
-            Fechado
-          </label>
-        </div>`;
-      }).join("")}
+      <div class="hours-list">
+        ${WEEKDAY_NAMES.map((name, weekday) => {
+          const row = hoursByDay[weekday] || { open_time: "09:00", close_time: "18:00", is_closed: weekday === 0 };
+          const isOpen = !row.is_closed;
+          return `
+          <div class="hours-day${isOpen ? "" : " is-closed"}" data-weekday="${weekday}">
+            <span class="hours-day-name">${name}</span>
+            <label class="switch">
+              <input type="checkbox" class="hr-open-toggle" data-weekday="${weekday}" ${isOpen ? "checked" : ""} />
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+            <div class="hours-day-time">
+              <div class="hours-time-inputs">
+                <input type="time" id="hr-open-${weekday}" value="${(row.open_time || "09:00").slice(0, 5)}" ${isOpen ? "" : "disabled"} />
+                <span class="hours-time-sep">até</span>
+                <input type="time" id="hr-close-${weekday}" value="${(row.close_time || "18:00").slice(0, 5)}" ${isOpen ? "" : "disabled"} />
+              </div>
+              <span class="hours-closed-label">Fechado</span>
+            </div>
+          </div>`;
+        }).join("")}
+      </div>
       <p id="hours-form-error" class="form-error hidden" style="margin-top:16px;"></p>
       <button type="submit" class="btn btn-primary" style="margin-top:20px;">Salvar horários</button>
     </form>`;
 
-  card.querySelectorAll(".hr-closed").forEach((cb) => {
-    cb.addEventListener("change", () => {
-      const wd = cb.dataset.weekday;
-      document.getElementById(`hr-open-${wd}`).disabled = cb.checked;
-      document.getElementById(`hr-close-${wd}`).disabled = cb.checked;
+  card.querySelectorAll(".hr-open-toggle").forEach((toggle) => {
+    toggle.addEventListener("change", () => {
+      const wd = toggle.dataset.weekday;
+      const isOpen = toggle.checked;
+      toggle.closest(".hours-day").classList.toggle("is-closed", !isOpen);
+      document.getElementById(`hr-open-${wd}`).disabled = !isOpen;
+      document.getElementById(`hr-close-${wd}`).disabled = !isOpen;
     });
   });
 
@@ -565,7 +576,7 @@ async function renderHorariosTab() {
 
     const rows = WEEKDAY_NAMES.map((_, weekday) => ({
       weekday,
-      is_closed: document.querySelector(`.hr-closed[data-weekday="${weekday}"]`).checked,
+      is_closed: !document.querySelector(`.hr-open-toggle[data-weekday="${weekday}"]`).checked,
       open_time: document.getElementById(`hr-open-${weekday}`).value,
       close_time: document.getElementById(`hr-close-${weekday}`).value,
     }));
@@ -581,7 +592,6 @@ async function renderHorariosTab() {
     alert("Horários atualizados com sucesso.");
   });
 }
-
 // =========================================================
 // TAB: BLOQUEIOS DE AGENDA
 // =========================================================
@@ -1158,94 +1168,34 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-// Envia o link de redefinição de senha para o e-mail do cliente.
-// O cliente clica no link e define a nova senha em /reset-senha.html.
-async function sendClientResetLink(email, btn) {
-  if (!confirm(`Enviar link de redefinição de senha para ${email}?`)) return;
-
-  const originalLabel = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = "Enviando…";
-
-  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/reset-senha.html`,
-  });
-
-  if (error) {
-    const rateLimited = error.status === 429 || /seconds|rate limit/i.test(error.message || "");
-    alert(
-      rateLimited
-        ? "Aguarde cerca de um minuto antes de reenviar o link para esse cliente."
-        : `Não foi possível enviar o link: ${error.message}`
-    );
-    btn.disabled = false;
-    btn.textContent = originalLabel;
-    return;
-  }
-
-  btn.textContent = "Link enviado ✓";
-  // O Supabase limita o reenvio a 1 vez por minuto por usuário.
-  setTimeout(() => {
-    btn.disabled = false;
-    btn.textContent = originalLabel;
-  }, 60000);
-}
-
 async function renderClientesTab() {
   const content = document.getElementById("admin-content");
   content.innerHTML = `
     <h2>Clientes</h2>
     <p class="admin-sub">Histórico por cliente. Destacamos quem não retorna há mais de 45 dias e aniversariantes dos próximos 14 dias.</p>
     <table class="admin-table">
-      <thead><tr><th>Cliente</th><th>Contato</th><th>Aniversário</th><th>Atendimentos</th><th>Último atendimento</th><th></th><th>Senha</th></tr></thead>
-      <tbody id="clients-tbody"><tr><td colspan="7">Carregando…</td></tr></tbody>
+      <thead><tr><th>Cliente</th><th>Contato</th><th>Aniversário</th><th>Atendimentos</th><th>Último atendimento</th><th></th></tr></thead>
+      <tbody id="clients-tbody"><tr><td colspan="6">Carregando…</td></tr></tbody>
     </table>`;
 
   const { data, error } = await supabaseClient.rpc("get_client_summary");
   const tbody = document.getElementById("clients-tbody");
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="7">Não foi possível carregar os clientes.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">Não foi possível carregar os clientes.</td></tr>`;
     return;
   }
 
   if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7">Nenhum cliente ainda.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">Nenhum cliente ainda.</td></tr>`;
     return;
-  }
-
-  // Descobre quais e-mails têm conta (cliente de guest checkout pode não ter).
-  // accountEmails = null significa que não foi possível verificar (função SQL ainda não criada).
-  const emails = [
-    ...new Set(data.map((c) => (c.customer_email || "").trim().toLowerCase()).filter(Boolean)),
-  ];
-  let accountEmails = null;
-  if (emails.length > 0) {
-    const { data: withAccount, error: accountError } = await supabaseClient.rpc(
-      "admin_emails_with_account",
-      { p_emails: emails }
-    );
-    if (!accountError && Array.isArray(withAccount)) {
-      accountEmails = new Set(withAccount.map((e) => String(e).toLowerCase()));
-    }
-  }
-
-  function passwordCell(c, idx) {
-    const email = (c.customer_email || "").trim();
-    if (!email) {
-      return `<span style="color:var(--color-text-soft); font-size:0.82rem;">Sem e-mail</span>`;
-    }
-    if (accountEmails && !accountEmails.has(email.toLowerCase())) {
-      return `<span class="badge off" title="Esse e-mail não tem conta criada (agendou como convidado)">Sem conta</span>`;
-    }
-    return `<button class="btn-icon" data-reset="${idx}">Redefinir senha</button>`;
   }
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 45);
 
   tbody.innerHTML = data
-    .map((c, idx) => {
+    .map((c) => {
       const lastDate = c.last_appointment_date ? new Date(c.last_appointment_date) : null;
       const inactive = lastDate && lastDate < cutoff;
       const daysUntil = daysUntilBirthday(c.birthday);
@@ -1262,19 +1212,10 @@ async function renderClientesTab() {
           ${inactive ? `<span class="badge off">Sem retorno</span>` : ""}
           ${isSoonBirthday ? `<span class="badge on">🎂 ${daysUntil === 0 ? "Hoje!" : `em ${daysUntil}d`}</span>` : ""}
         </td>
-        <td>${passwordCell(c, idx)}</td>
       </tr>`;
     })
     .join("");
-
-  tbody.querySelectorAll("[data-reset]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const client = data[Number(btn.dataset.reset)];
-      sendClientResetLink((client.customer_email || "").trim(), btn);
-    });
-  });
 }
-
 // =========================================================
 // Inicialização
 // =========================================================

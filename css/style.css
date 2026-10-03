@@ -1337,17 +1337,78 @@ button {
   margin-bottom: 16px;
 }
 
-.hours-row {
-  display: grid;
-  grid-template-columns: 110px 1fr 1fr 100px;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--color-border);
+.hours-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 24px 24px;
 }
-.hours-row:last-child { border-bottom: none; }
 
-.hours-row .day-label { font-weight: 600; font-size: 0.9rem; }
+.hours-list { display: flex; flex-direction: column; }
+
+.hours-day {
+  display: grid;
+  grid-template-columns: 112px 42px 1fr;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--color-border);
+  transition: opacity 0.15s ease;
+}
+.hours-day:last-child { border-bottom: none; }
+.hours-day.is-closed { opacity: 0.55; }
+
+.hours-day-name { font-weight: 600; font-size: 0.92rem; }
+
+.hours-day-time { display: flex; align-items: center; }
+
+.hours-time-inputs { display: flex; align-items: center; gap: 10px; }
+.hours-time-sep { color: var(--color-text-soft); font-size: 0.82rem; }
+
+.hours-closed-label {
+  display: none;
+  font-size: 0.85rem;
+  color: var(--color-text-soft);
+  font-style: italic;
+}
+.hours-day.is-closed .hours-time-inputs { display: none; }
+.hours-day.is-closed .hours-closed-label { display: inline; }
+
+/* Toggle "Aberto / Fechado" */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+.switch-track {
+  position: absolute;
+  inset: 0;
+  background: var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: var(--color-surface);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease;
+}
+.switch input:checked + .switch-track { background: var(--color-gold); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(18px); }
+.switch input:focus-visible + .switch-track { box-shadow: 0 0 0 2px var(--color-gold-light); }
 
 .checkbox-field {
   display: flex;
@@ -1515,7 +1576,9 @@ button {
   .admin-tab.active { border-left: none; border-bottom-color: var(--color-gold); }
   .admin-tab-footer { margin: 0; padding: 0 0 0 12px; border: none; }
   .admin-content { padding: 24px; }
-  .hours-row { grid-template-columns: 90px 1fr 1fr 70px; font-size: 0.85rem; }
+  .hours-day { grid-template-columns: 1fr 42px; row-gap: 10px; }
+  .hours-day-time { grid-column: 1 / -1; justify-content: space-between; }
+  .hours-day-name { font-size: 0.88rem; }
 }
 
 @media (max-width: 560px) {
