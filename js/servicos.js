@@ -21,8 +21,13 @@ function serviceCardHtml(s) {
         <div class="duration">🕐 ${formatDuration(s.duration_minutes)}</div>
       </div>
       <div class="price-block">
-        <span class="service-price-from-label${s.price_is_from ? "" : " is-empty"}">A partir de</span>
-        <span class="price">${formatPrice(s.price_cents)}</span>
+        ${
+          s.price_on_request
+            ? `<span class="service-price-from-label is-empty">A partir de</span>
+               <span class="price price-on-request">Consultar valores</span>`
+            : `<span class="service-price-from-label${s.price_is_from ? "" : " is-empty"}">A partir de</span>
+               <span class="price">${formatPrice(s.price_cents)}</span>`
+        }
       </div>
       <span class="service-card-arrow" aria-hidden="true">→</span>
       <span class="sr-only">Agendar ${s.name}</span>

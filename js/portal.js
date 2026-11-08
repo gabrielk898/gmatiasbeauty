@@ -170,7 +170,7 @@ async function renderDashboard(user) {
 
   const { data: appointments, error } = await supabaseClient
     .from("appointments")
-    .select("*, service:services(id, name, price_cents)")
+    .select("*, service:services(id, name, price_cents, price_on_request)")
     .order("appointment_date", { ascending: true })
     .order("start_time", { ascending: true });
 
@@ -259,7 +259,17 @@ function renderDashboardList() {
           <span class="appointment-status ${a.status}">${statusLabel(a.status)}</span>
         </div>
         <p class="meta">📅 ${formatDateShort(a.appointment_date)} às ${a.start_time.slice(0, 5)}</p>
-        ${a.service ? `<p class="meta">${formatPrice(a.service.price_cents)}</p>` : ""}
+        ${
+          a.service
+            ? `<p class="meta">${
+                a.final_price_cents != null
+                  ? formatPrice(a.final_price_cents)
+                  : a.service.price_on_request
+                  ? "Valor sob consulta"
+                  : formatPrice(a.service.price_cents)
+              }</p>`
+            : ""
+        }
         ${
           dashboardTab === "upcoming"
             ? `<div class="appointment-actions">

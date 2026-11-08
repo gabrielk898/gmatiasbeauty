@@ -2053,3 +2053,9 @@ button {
   100% { background: transparent; }
 }
 
+
+/* ---------- Preço sob consulta ---------- */
+.service-page-card .price-block .price.price-on-request {
+  font-size: 0.95rem;
+  white-space: nowrap;
+}

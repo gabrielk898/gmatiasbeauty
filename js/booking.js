@@ -30,6 +30,11 @@ function todayISO() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function formatServicePriceText(s) {
+  if (s.price_on_request) return "Valor sob consulta";
+  return `${s.price_is_from ? "A partir de " : ""}${formatPrice(s.price_cents)}`;
+}
+
 function formatPrice(cents) {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -407,7 +412,7 @@ function selectSlot(start, end, btnEl) {
 // ---------------------------------------------------------
 function fillSummary() {
   document.getElementById("summary-service-name").textContent = state.selectedService.name;
-  document.getElementById("summary-service-price").textContent = formatPrice(state.selectedService.price_cents);
+  document.getElementById("summary-service-price").textContent = formatServicePriceText(state.selectedService);
   document.getElementById("summary-date").textContent = formatDateLong(state.selectedDate);
   document.getElementById("summary-time").textContent =
     `${state.selectedSlot.start} (${state.selectedService.duration_minutes} min)`;
@@ -515,7 +520,7 @@ async function submitBooking() {
 // ---------------------------------------------------------
 function fillConfirmation() {
   document.getElementById("confirm-service-name").textContent = state.selectedService.name;
-  document.getElementById("confirm-service-price").textContent = formatPrice(state.selectedService.price_cents);
+  document.getElementById("confirm-service-price").textContent = formatServicePriceText(state.selectedService);
   document.getElementById("confirm-date").textContent = formatDateLong(state.selectedDate);
   document.getElementById("confirm-time").textContent =
     `${state.selectedSlot.start} (${state.selectedService.duration_minutes} min)`;

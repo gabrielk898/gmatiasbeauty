@@ -39,6 +39,7 @@ function formatPrice(cents) {
 }
 
 function formatServicePrice(s) {
+  if (s.price_on_request) return `<span class="badge on">Consultar valores</span>`;
   return `${s.price_is_from ? "A partir de " : ""}${formatPrice(s.price_cents)}`;
 }
 
@@ -511,7 +512,7 @@ function renderServiceForm() {
           </div>
           <div class="form-field">
             <label>Preço (R$)</label>
-            <input type="text" id="sf-price" required value="${editing ? centsToReaisInput(editing.price_cents) : ""}" placeholder="150,00" />
+            <input type="text" id="sf-price" ${editing?.price_on_request ? "" : "required"} value="${editing ? centsToReaisInput(editing.price_cents) : ""}" placeholder="150,00" />
           </div>
           <div class="form-field">
             <label>Ordem de exibição</label>
@@ -538,6 +539,12 @@ function renderServiceForm() {
               Preço "a partir de"
             </label>
           </div>
+          <div class="form-field">
+            <label class="checkbox-field" style="margin-top: 28px;">
+              <input type="checkbox" id="sf-price-request" ${editing?.price_on_request ? "checked" : ""} />
+              Preço sob consulta (mostra "Consultar valores")
+            </label>
+          </div>
         </div>
         <div class="form-field">
           <label>Descrição (opcional)</label>
@@ -555,6 +562,18 @@ function renderServiceForm() {
     slot.innerHTML = "";
   });
 
+  // Preço sob consulta: o valor vira opcional (só referência interna)
+  const priceRequestEl = document.getElementById("sf-price-request");
+  const syncPriceRequest = () => {
+    const onRequest = priceRequestEl.checked;
+    const priceEl = document.getElementById("sf-price");
+    priceEl.required = !onRequest;
+    priceEl.placeholder = onRequest ? "opcional" : "150,00";
+    document.getElementById("sf-price-from").disabled = onRequest;
+  };
+  priceRequestEl.addEventListener("change", syncPriceRequest);
+  syncPriceRequest();
+
   document.getElementById("service-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const errorEl = document.getElementById("service-form-error");
@@ -564,11 +583,12 @@ function renderServiceForm() {
       name: document.getElementById("sf-name").value.trim(),
       icon: document.getElementById("sf-icon").value.trim() || "✨",
       duration_minutes: parseInt(document.getElementById("sf-duration").value, 10),
-      price_cents: reaisToCents(document.getElementById("sf-price").value),
+      price_cents: reaisToCents(document.getElementById("sf-price").value) || 0,
+      price_on_request: document.getElementById("sf-price-request").checked,
       sort_order: parseInt(document.getElementById("sf-sort").value, 10) || 0,
       active: document.getElementById("sf-active").checked,
       category: document.getElementById("sf-category").value.trim() || null,
-      price_is_from: document.getElementById("sf-price-from").checked,
+      price_is_from: !document.getElementById("sf-price-request").checked && document.getElementById("sf-price-from").checked,
       description: document.getElementById("sf-description").value.trim() || null,
     };
 
@@ -1453,7 +1473,7 @@ async function fetchAppointmentsBetween(start, end) {
   while (true) {
     const { data, error } = await supabaseClient
       .from("appointments")
-      .select("id, appointment_date, status, final_price_cents, service:services(name, price_cents)")
+      .select("id, appointment_date, status, final_price_cents, service:services(name, price_cents, price_on_request)")
       .gte("appointment_date", start)
       .lte("appointment_date", end)
       .order("appointment_date")
@@ -1467,7 +1487,9 @@ async function fetchAppointmentsBetween(start, end) {
 }
 
 // Valor realmente cobrado quando existir; senão o preço de tabela do serviço.
-const appointmentValue = (a) => a.final_price_cents ?? a.service?.price_cents ?? 0;
+// Serviços "sob consulta" só contam com o valor informado ao concluir.
+const appointmentValue = (a) =>
+  a.final_price_cents ?? (a.service?.price_on_request ? 0 : a.service?.price_cents ?? 0);
 
 function revSummarize(list) {
   const completed = list.filter((a) => a.status === "completed");
@@ -1482,7 +1504,8 @@ function revSummarize(list) {
     lost,
     total: list.length,
     scheduledCount: scheduled.length,
-    scheduledValue: scheduled.reduce((sum, a) => sum + (a.service?.price_cents ?? 0), 0),
+    scheduledValue: scheduled.reduce((sum, a) => sum + (a.service?.price_on_request ? 0 : a.service?.price_cents ?? 0), 0),
+    scheduledOnRequest: scheduled.filter((a) => a.service?.price_on_request).length,
   };
 }
 
@@ -1636,7 +1659,7 @@ async function loadAndRenderRevenue() {
     <div class="metric-card">
       <div class="label">Ainda agendado (previsto)</div>
       <div class="value">${formatPrice(c.scheduledValue)}</div>
-      <span class="delta">${c.scheduledCount} horário${c.scheduledCount === 1 ? "" : "s"} confirmado${c.scheduledCount === 1 ? "" : "s"}</span>
+      <span class="delta">${c.scheduledCount} horário${c.scheduledCount === 1 ? "" : "s"} confirmado${c.scheduledCount === 1 ? "" : "s"}${c.scheduledOnRequest ? ` · ${c.scheduledOnRequest} sob consulta (fora do valor)` : ""}</span>
     </div>`;
 
   renderRevenueTrend(period, curr, prev, c, p);
@@ -2058,7 +2081,7 @@ async function openClientHistoryModal(client) {
 
   const { data, error } = await supabaseClient
     .from("appointments")
-    .select("*, service:services(name, price_cents)")
+    .select("*, service:services(name, price_cents, price_on_request)")
     .in("customer_phone", client.phones && client.phones.length ? client.phones : [client.customer_phone])
     .order("appointment_date", { ascending: false })
     .order("start_time", { ascending: false });
@@ -2075,7 +2098,7 @@ async function openClientHistoryModal(client) {
 
   const completedAppointments = data.filter((a) => a.status === "completed");
   const totalSpentCents = completedAppointments.reduce(
-    (sum, a) => sum + (a.final_price_cents ?? a.service?.price_cents ?? 0),
+    (sum, a) => sum + appointmentValue(a),
     0
   );
   const avgTicketCents = completedAppointments.length ? totalSpentCents / completedAppointments.length : 0;
@@ -2107,7 +2130,7 @@ async function openClientHistoryModal(client) {
             const value = isCompleted
               ? a.final_price_cents != null
                 ? formatPrice(a.final_price_cents)
-                : a.service?.price_cents != null
+                : a.service?.price_cents != null && !a.service?.price_on_request
                 ? formatPrice(a.service.price_cents)
                 : "—"
               : "—";
