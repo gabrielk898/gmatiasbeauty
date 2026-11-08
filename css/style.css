@@ -2031,3 +2031,25 @@ button {
   .rev-nav strong { min-width: 0; }
 }
 
+/* ---------- Serviços: agrupamento e destaque após salvar ---------- */
+.svc-group-row td {
+  background: var(--color-bg);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold-dark);
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.svc-group-row td span {
+  margin-left: 6px;
+  font-weight: 500;
+  color: var(--color-text-soft);
+}
+.svc-row-flash td { animation: svcFlash 2.2s ease; }
+@keyframes svcFlash {
+  0%, 40% { background: var(--color-gold-light); }
+  100% { background: transparent; }
+}
+

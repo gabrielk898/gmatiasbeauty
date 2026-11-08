@@ -369,6 +369,10 @@ async function renderServicosTab() {
     <p class="admin-sub">Cadastre, edite ou desative os procedimentos oferecidos.</p>
     <div class="admin-toolbar">
       <button class="btn btn-primary" id="new-service-btn">+ Novo serviço</button>
+      <div class="rev-seg" role="tablist" aria-label="Ordenar serviços">
+        <button type="button" data-svc-sort="category">Por categoria</button>
+        <button type="button" data-svc-sort="name">A–Z</button>
+      </div>
     </div>
     <div id="service-form-slot"></div>
     <table class="admin-table">
@@ -385,7 +389,14 @@ async function renderServicosTab() {
     renderServiceForm();
   });
 
-  const { data, error } = await supabaseClient.from("services").select("*").order("sort_order");
+  content.querySelectorAll("[data-svc-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      adminState.servicesSort = btn.dataset.svcSort;
+      renderServicesRows();
+    });
+  });
+
+  const { data, error } = await supabaseClient.from("services").select("*").order("name");
   const tbody = document.getElementById("services-tbody");
 
   if (error) {
@@ -400,10 +411,24 @@ async function renderServicosTab() {
     return;
   }
 
-  tbody.innerHTML = data
-    .map(
-      (s) => `
-      <tr>
+  renderServicesRows();
+}
+
+function compareText(a, b) {
+  return String(a || "").localeCompare(String(b || ""), "pt-BR", { sensitivity: "base", numeric: true });
+}
+
+function renderServicesRows(highlightId) {
+  const tbody = document.getElementById("services-tbody");
+  if (!tbody) return;
+  const mode = adminState.servicesSort || "category";
+
+  document.querySelectorAll("[data-svc-sort]").forEach((b) => {
+    b.classList.toggle("active", b.dataset.svcSort === mode);
+  });
+
+  const rowHtml = (s) => `
+      <tr data-service-row="${s.id}">
         <td>${s.icon || "✨"} ${escapeHtml(s.name)}</td>
         <td>${s.category ? escapeHtml(s.category) : `<span style="color:var(--color-text-soft);">—</span>`}</td>
         <td>${formatDuration(s.duration_minutes)}</td>
@@ -415,20 +440,52 @@ async function renderServicosTab() {
             <button class="btn-icon danger" data-delete="${s.id}">Excluir</button>
           </div>
         </td>
-      </tr>`
-    )
-    .join("");
+      </tr>`;
+
+  const byName = [...adminState.services].sort((a, b) => compareText(a.name, b.name));
+
+  if (mode === "name") {
+    tbody.innerHTML = byName.map(rowHtml).join("");
+  } else {
+    const groups = {};
+    byName.forEach((s) => {
+      const key = (s.category || "").trim();
+      (groups[key] = groups[key] || []).push(s);
+    });
+    const keys = Object.keys(groups).sort((a, b) => {
+      if (!a) return 1; // "Sem categoria" por último
+      if (!b) return -1;
+      return compareText(a, b);
+    });
+    tbody.innerHTML = keys
+      .map(
+        (k) => `
+      <tr class="svc-group-row"><td colspan="6">${k ? escapeHtml(k) : "Sem categoria"} <span>${groups[k].length}</span></td></tr>
+      ${groups[k].map(rowHtml).join("")}`
+      )
+      .join("");
+  }
 
   tbody.querySelectorAll("[data-edit]").forEach((btn) => {
     btn.addEventListener("click", () => {
       adminState.editingServiceId = btn.dataset.edit;
       renderServiceForm();
+      document.getElementById("service-form-slot").scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
 
   tbody.querySelectorAll("[data-delete]").forEach((btn) => {
     btn.addEventListener("click", () => deleteService(btn.dataset.delete));
   });
+
+  if (highlightId) {
+    const row = tbody.querySelector(`[data-service-row="${highlightId}"]`);
+    if (row) {
+      row.classList.add("svc-row-flash");
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => row.classList.remove("svc-row-flash"), 2200);
+    }
+  }
 }
 
 function renderServiceForm() {
@@ -516,10 +573,10 @@ function renderServiceForm() {
     };
 
     const query = editing
-      ? supabaseClient.from("services").update(payload).eq("id", editing.id)
-      : supabaseClient.from("services").insert(payload);
+      ? supabaseClient.from("services").update(payload).eq("id", editing.id).select("id")
+      : supabaseClient.from("services").insert(payload).select("id");
 
-    const { error } = await query;
+    const { data: saved, error } = await query;
 
     if (error) {
       errorEl.textContent = error.message.includes("duplicate")
@@ -530,7 +587,9 @@ function renderServiceForm() {
     }
 
     slot.innerHTML = "";
-    renderServicosTab();
+    const savedId = editing ? editing.id : saved && saved[0] && saved[0].id;
+    await renderServicosTab();
+    renderServicesRows(savedId);
   });
 }
 
