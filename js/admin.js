@@ -12,8 +12,9 @@ const adminState = {
   notifPanelOpen: false,
   calYear: new Date().getFullYear(),
   calMonth: new Date().getMonth(),
-  calSelectedDate: new Date().toISOString().slice(0, 10),
+  calSelectedDate: localIsoDate(new Date()),
   calMonthAppointments: [],
+  calHideCancelled: false,
 };
 
 const TABS = [
@@ -57,6 +58,10 @@ function reaisToCents(value) {
 
 function centsToReaisInput(cents) {
   return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+function localIsoDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function formatDateBR(iso) {
@@ -913,19 +918,43 @@ async function renderAgendamentosTab() {
   const content = document.getElementById("admin-content");
   content.innerHTML = `
     <h2>Agendamentos</h2>
-    <p class="admin-sub">Clique em um dia para ver os agendamentos. Atualize o status conforme o atendimento acontece.</p>
+    <p class="admin-sub">Clique em um dia (no calendário ou na visão geral) para ver e atualizar os agendamentos daquele dia.</p>
 
-    <div class="card" style="max-width: 420px; margin: 0 0 20px;">
-      <div class="calendar-nav">
-        <button id="admin-cal-prev" aria-label="Mês anterior">‹</button>
-        <strong id="admin-cal-label" class="font-display"></strong>
-        <button id="admin-cal-next" aria-label="Próximo mês">›</button>
+    <div class="agenda-layout">
+      <div class="agenda-left">
+        <div class="card">
+          <div class="calendar-nav">
+            <button id="admin-cal-prev" aria-label="Mês anterior">‹</button>
+            <strong id="admin-cal-label" class="font-display"></strong>
+            <button id="admin-cal-next" aria-label="Próximo mês">›</button>
+          </div>
+          <div class="calendar-grid" id="admin-calendar-grid"></div>
+        </div>
+
+        <div id="admin-day-label" class="portal-section-label"></div>
+        <div id="admin-day-appointments"></div>
       </div>
-      <div class="calendar-grid" id="admin-calendar-grid"></div>
-    </div>
 
-    <div id="admin-day-label" class="portal-section-label"></div>
-    <div id="admin-day-appointments"></div>`;
+      <section class="card agenda-overview" aria-label="Visão geral do mês">
+        <div class="agenda-overview-head">
+          <div>
+            <h3 class="font-display">Visão geral do mês</h3>
+            <span id="agenda-overview-month" class="agenda-overview-month"></span>
+          </div>
+          <label class="agenda-toggle">
+            <input type="checkbox" id="agenda-hide-cancelled" ${adminState.calHideCancelled ? "checked" : ""} />
+            Ocultar cancelados
+          </label>
+        </div>
+        <div class="agenda-stats" id="agenda-stats"></div>
+        <div class="agenda-overview-list" id="agenda-overview-list"></div>
+      </section>
+    </div>`;
+
+  document.getElementById("agenda-hide-cancelled").addEventListener("change", (e) => {
+    adminState.calHideCancelled = e.target.checked;
+    renderAdminMonthOverview();
+  });
 
   document.getElementById("admin-cal-prev").addEventListener("click", () => {
     adminState.calMonth -= 1;
@@ -967,9 +996,12 @@ async function loadAndRenderAdminCalendar() {
 
   const hasSelectedInMonth = adminState.calSelectedDate.slice(0, 7) === startIso.slice(0, 7);
   if (!hasSelectedInMonth) {
-    adminState.calSelectedDate = startIso;
+    const todayIso = localIsoDate(new Date());
+    adminState.calSelectedDate = todayIso.slice(0, 7) === startIso.slice(0, 7) ? todayIso : startIso;
+    renderAdminCalendarGrid();
   }
   renderAdminDayList();
+  renderAdminMonthOverview();
 }
 
 function renderAdminCalendarGrid() {
@@ -993,6 +1025,7 @@ function renderAdminCalendarGrid() {
     const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     let cls = "calendar-day selectable";
     if (datesWithEvents.has(iso)) cls += " has-events";
+    if (iso === localIsoDate(new Date())) cls += " today";
     if (iso === adminState.calSelectedDate) cls += " selected";
     cells += `<button type="button" class="${cls}" data-date="${iso}">${day}</button>`;
   }
@@ -1001,9 +1034,7 @@ function renderAdminCalendarGrid() {
 
   grid.querySelectorAll(".calendar-day.selectable").forEach((btn) => {
     btn.addEventListener("click", () => {
-      adminState.calSelectedDate = btn.dataset.date;
-      renderAdminCalendarGrid();
-      renderAdminDayList();
+      selectAdminCalendarDate(btn.dataset.date, false);
     });
   });
 }
@@ -1067,6 +1098,7 @@ function renderAdminDayList() {
         return;
       }
       if (item) item.status = select.value;
+      renderAdminMonthOverview();
     });
   });
 
@@ -1077,6 +1109,107 @@ function renderAdminDayList() {
       openCompleteAppointmentModal(item, select);
     });
   });
+}
+
+function selectAdminCalendarDate(iso, scrollToDay) {
+  adminState.calSelectedDate = iso;
+  renderAdminCalendarGrid();
+  renderAdminDayList();
+  renderAdminMonthOverview();
+  if (scrollToDay && window.innerWidth <= 1100) {
+    document.getElementById("admin-day-label")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function renderAdminMonthOverview() {
+  const list = document.getElementById("agenda-overview-list");
+  const stats = document.getElementById("agenda-stats");
+  const monthLabel = document.getElementById("agenda-overview-month");
+  if (!list || !stats) return;
+
+  monthLabel.textContent = `${MONTH_NAMES[adminState.calMonth]} ${adminState.calYear}`;
+
+  const all = adminState.calMonthAppointments;
+  const isCancelled = (a) => a.status === "cancelled" || a.status === "no_show";
+  const count = (status) => all.filter((a) => a.status === status).length;
+  const completedCents = all
+    .filter((a) => a.status === "completed")
+    .reduce((sum, a) => sum + (a.final_price_cents || 0), 0);
+
+  stats.innerHTML = `
+    <div class="agenda-stat"><span>Agendados</span><strong>${all.filter((a) => !isCancelled(a)).length}</strong></div>
+    <div class="agenda-stat"><span>Confirmados</span><strong>${count("confirmed")}</strong></div>
+    <div class="agenda-stat"><span>Concluídos</span><strong>${count("completed")}</strong></div>
+    <div class="agenda-stat"><span>Cancel./faltas</span><strong>${count("cancelled") + count("no_show")}</strong></div>
+    <div class="agenda-stat agenda-stat-wide"><span>Recebido (concluídos)</span><strong>${formatPrice(completedCents)}</strong></div>`;
+
+  const visible = all
+    .filter((a) => !(adminState.calHideCancelled && isCancelled(a)))
+    .slice()
+    .sort((a, b) =>
+      a.appointment_date === b.appointment_date
+        ? String(a.start_time).localeCompare(String(b.start_time))
+        : a.appointment_date.localeCompare(b.appointment_date)
+    );
+
+  if (visible.length === 0) {
+    list.innerHTML = `<p class="empty-state">Nenhum agendamento neste mês.</p>`;
+    return;
+  }
+
+  const byDate = {};
+  visible.forEach((a) => {
+    (byDate[a.appointment_date] = byDate[a.appointment_date] || []).push(a);
+  });
+
+  const todayIso = localIsoDate(new Date());
+
+  list.innerHTML = Object.keys(byDate)
+    .map((iso) => {
+      const [y, m, d] = iso.split("-").map(Number);
+      const weekday = WEEKDAY_NAMES[new Date(y, m - 1, d).getDay()].slice(0, 3);
+      const items = byDate[iso];
+      const active = items.filter((a) => !isCancelled(a)).length;
+      let cls = "agenda-day";
+      if (iso === todayIso) cls += " is-today";
+      if (iso === adminState.calSelectedDate) cls += " is-selected";
+      if (iso < todayIso) cls += " is-past";
+
+      return `
+        <div class="${cls}">
+          <button type="button" class="agenda-day-head" data-date="${iso}">
+            <span>${weekday}, ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}${iso === todayIso ? ' <em>hoje</em>' : ""}</span>
+            <span class="agenda-day-count">${active ? `${active} agend.` : "só cancelados"}</span>
+          </button>
+          ${items
+            .map(
+              (a) => `
+            <button type="button" class="agenda-row${isCancelled(a) ? " is-cancelled" : ""}" data-date="${iso}">
+              <span class="agenda-row-time">${String(a.start_time || "").slice(0, 5)}</span>
+              <span class="agenda-row-info">
+                <strong>${escapeHtml(a.customer_name || "Cliente")}</strong>
+                <span>${escapeHtml(a.service?.name || "Serviço")}</span>
+              </span>
+              <span class="appointment-status ${a.status}">${STATUS_LABELS[a.status] || a.status}</span>
+            </button>`
+            )
+            .join("")}
+        </div>`;
+    })
+    .join("");
+
+  list.querySelectorAll("[data-date]").forEach((btn) => {
+    btn.addEventListener("click", () => selectAdminCalendarDate(btn.dataset.date, true));
+  });
+
+  // mantém o dia selecionado visível dentro da lista
+  const selected = list.querySelector(".agenda-day.is-selected");
+  if (selected) {
+    const top = selected.offsetTop - list.offsetTop;
+    if (top < list.scrollTop || top > list.scrollTop + list.clientHeight - 60) {
+      list.scrollTop = Math.max(0, top - 8);
+    }
+  }
 }
 
 function openCompleteAppointmentModal(appt, selectEl) {
@@ -1201,6 +1334,7 @@ function openCompleteAppointmentModal(appt, selectEl) {
     appt.final_price_cents = cents;
     close();
     renderAdminDayList();
+    renderAdminMonthOverview();
   });
 }
 
