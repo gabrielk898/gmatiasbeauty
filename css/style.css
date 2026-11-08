@@ -2059,3 +2059,31 @@ button {
   font-size: 0.95rem;
   white-space: nowrap;
 }
+
+/* ---------- Banner de promoção clicável ---------- */
+.promo-card-link {
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.promo-card-link:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+.promo-card .promo-text { flex: 1; min-width: 0; }
+.promo-cta {
+  flex-shrink: 0;
+  background: #fff;
+  color: var(--color-gold-dark);
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 9px 16px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.promo-card-link:hover .promo-cta { background: var(--color-bg); }
+
+@media (max-width: 560px) {
+  .promo-card-link { flex-wrap: wrap; }
+  .promo-cta { width: 100%; text-align: center; }
+}
