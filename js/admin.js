@@ -1342,136 +1342,453 @@ function openCompleteAppointmentModal(appt, selectEl) {
 // TAB: FATURAMENTO
 // =========================================================
 let revenueChartInstance = null;
+let serviceChartInstance = null;
+
+const REV_GOLD = "#A68A5B";
+const REV_PREV = "#4A5560";
+const MONTH_SHORT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+// Período escolhido na aba (sobrevive à troca de abas)
+adminState.revPeriod = adminState.revPeriod || "month"; // month | quarter | year
+adminState.revAnchor = adminState.revAnchor || { year: new Date().getFullYear(), month: new Date().getMonth() };
+
+function revPeriodRange(period, anchor) {
+  const iso = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const y = anchor.year;
+  let firstMonth, lastMonth;
+  if (period === "month") {
+    firstMonth = lastMonth = anchor.month;
+  } else if (period === "quarter") {
+    firstMonth = Math.floor(anchor.month / 3) * 3;
+    lastMonth = firstMonth + 2;
+  } else {
+    firstMonth = 0;
+    lastMonth = 11;
+  }
+  const lastDay = new Date(y, lastMonth + 1, 0).getDate();
+  return { start: iso(y, firstMonth, 1), end: iso(y, lastMonth, lastDay), year: y, firstMonth, lastMonth };
+}
+
+function revShiftAnchor(period, anchor, dir) {
+  const step = period === "month" ? 1 : period === "quarter" ? 3 : 12;
+  const d = new Date(anchor.year, anchor.month + step * dir, 1);
+  return { year: d.getFullYear(), month: d.getMonth() };
+}
+
+function revPeriodLabel(period, r) {
+  if (period === "month") return `${MONTH_NAMES[r.firstMonth]} ${r.year}`;
+  if (period === "quarter") {
+    const q = r.firstMonth / 3 + 1;
+    return `${q}º trimestre ${r.year} (${MONTH_SHORT[r.firstMonth]}–${MONTH_SHORT[r.lastMonth]})`;
+  }
+  return `Ano ${r.year}`;
+}
+
+const REV_PERIOD_WORD = { month: "mês", quarter: "trimestre", year: "ano" };
+
+// Busca paginada (o Supabase devolve no máximo 1000 linhas por vez)
+async function fetchAppointmentsBetween(start, end) {
+  let all = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error } = await supabaseClient
+      .from("appointments")
+      .select("id, appointment_date, status, final_price_cents, service:services(name, price_cents)")
+      .gte("appointment_date", start)
+      .lte("appointment_date", end)
+      .order("appointment_date")
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
+// Valor realmente cobrado quando existir; senão o preço de tabela do serviço.
+const appointmentValue = (a) => a.final_price_cents ?? a.service?.price_cents ?? 0;
+
+function revSummarize(list) {
+  const completed = list.filter((a) => a.status === "completed");
+  const revenue = completed.reduce((sum, a) => sum + appointmentValue(a), 0);
+  const lost = list.filter((a) => a.status === "cancelled" || a.status === "no_show").length;
+  const scheduled = list.filter((a) => a.status === "confirmed");
+  return {
+    completed,
+    revenue,
+    count: completed.length,
+    avg: completed.length ? revenue / completed.length : 0,
+    lost,
+    total: list.length,
+    scheduledCount: scheduled.length,
+    scheduledValue: scheduled.reduce((sum, a) => sum + (a.service?.price_cents ?? 0), 0),
+  };
+}
+
+function revDelta(curr, prev, word, partial) {
+  if (!prev) return `<span class="delta">sem dados do ${word} anterior</span>`;
+  const pct = Math.round(((curr - prev) / prev) * 100);
+  const cls = pct >= 0 ? "positive" : "negative";
+  const ref = partial ? `mesmo ponto do ${word} anterior` : `${word} anterior`;
+  return `<span class="delta ${cls}" title="${partial ? `Comparado com o ${word} anterior até a data equivalente a hoje` : ""}">${pct >= 0 ? "+" : ""}${pct}% vs ${ref}</span>`;
+}
+
+function revAddDays(iso, days) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return localIsoDate(new Date(y, m - 1, d + days));
+}
+
+function revDaysBetween(a, b) {
+  const [y1, m1, d1] = a.split("-").map(Number);
+  const [y2, m2, d2] = b.split("-").map(Number);
+  return Math.round((new Date(y2, m2 - 1, d2) - new Date(y1, m1 - 1, d1)) / 86400000);
+}
+
+function revMoney(v) {
+  if (Math.abs(v) >= 1000) return `R$ ${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mil`;
+  return `R$ ${v.toLocaleString("pt-BR")}`;
+}
 
 async function renderFaturamentoTab() {
   const content = document.getElementById("admin-content");
   content.innerHTML = `
     <h2>Faturamento</h2>
-    <p class="admin-sub">Baseado nos atendimentos marcados como concluídos no mês.</p>
-    <div class="metric-grid" id="metric-grid">
+    <p class="admin-sub">Baseado nos atendimentos marcados como concluídos no período.</p>
+
+    <div class="rev-toolbar">
+      <div class="rev-seg" role="tablist" aria-label="Período">
+        <button type="button" data-period="month">Mês</button>
+        <button type="button" data-period="quarter">Trimestre</button>
+        <button type="button" data-period="year">Ano</button>
+      </div>
+      <div class="rev-nav">
+        <button type="button" id="rev-prev" aria-label="Período anterior">‹</button>
+        <strong id="rev-label" class="font-display"></strong>
+        <button type="button" id="rev-next" aria-label="Próximo período">›</button>
+        <button type="button" class="btn-icon" id="rev-today">Atual</button>
+      </div>
+    </div>
+
+    <div class="metric-grid rev-metrics" id="metric-grid">
       <div class="metric-card"><div class="label">Carregando…</div></div>
     </div>
-    <div class="card">
-      <p style="font-size:0.82rem; color:var(--color-text-muted); margin-bottom:12px;">Faturamento por serviço (mês atual)</p>
-      <div style="position:relative; height:240px;">
-        <canvas id="revenue-chart"></canvas>
+
+    <div class="rev-charts">
+      <div class="card rev-card">
+        <p class="rev-card-title" id="rev-trend-title">Evolução</p>
+        <div class="rev-legend" id="rev-legend"></div>
+        <div style="position:relative; height:260px;"><canvas id="revenue-chart"></canvas></div>
       </div>
-    </div>`;
+      <div class="card rev-card">
+        <p class="rev-card-title">Faturamento por serviço</p>
+        <div style="position:relative; height:260px;" id="service-chart-wrap"><canvas id="service-chart"></canvas></div>
+      </div>
+    </div>
 
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
+    <div id="rev-table-wrap"></div>`;
 
-  const range = (y, m) => {
-    const start = `${y}-${String(m + 1).padStart(2, "0")}-01`;
-    const lastDay = new Date(y, m + 1, 0).getDate();
-    const end = `${y}-${String(m + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-    return { start, end };
-  };
+  content.querySelectorAll("[data-period]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      adminState.revPeriod = btn.dataset.period;
+      loadAndRenderRevenue();
+    });
+  });
+  document.getElementById("rev-prev").addEventListener("click", () => {
+    adminState.revAnchor = revShiftAnchor(adminState.revPeriod, adminState.revAnchor, -1);
+    loadAndRenderRevenue();
+  });
+  document.getElementById("rev-next").addEventListener("click", () => {
+    adminState.revAnchor = revShiftAnchor(adminState.revPeriod, adminState.revAnchor, 1);
+    loadAndRenderRevenue();
+  });
+  document.getElementById("rev-today").addEventListener("click", () => {
+    const now = new Date();
+    adminState.revAnchor = { year: now.getFullYear(), month: now.getMonth() };
+    loadAndRenderRevenue();
+  });
 
-  const thisMonth = range(year, month);
-  const prevDate = new Date(year, month - 1, 1);
-  const prevMonth = range(prevDate.getFullYear(), prevDate.getMonth());
+  await loadAndRenderRevenue();
+}
 
-  const [{ data: current }, { data: previous }] = await Promise.all([
-    supabaseClient
-      .from("appointments")
-      .select("*, service:services(name, price_cents)")
-      .gte("appointment_date", thisMonth.start)
-      .lte("appointment_date", thisMonth.end),
-    supabaseClient
-      .from("appointments")
-      .select("status, final_price_cents, service:services(price_cents)")
-      .gte("appointment_date", prevMonth.start)
-      .lte("appointment_date", prevMonth.end),
-  ]);
+async function loadAndRenderRevenue() {
+  const period = adminState.revPeriod;
+  const word = REV_PERIOD_WORD[period];
+  const curr = revPeriodRange(period, adminState.revAnchor);
+  const prev = revPeriodRange(period, revShiftAnchor(period, adminState.revAnchor, -1));
 
-  const currentList = current || [];
-  const previousList = previous || [];
+  document.querySelectorAll(".rev-seg [data-period]").forEach((b) => {
+    b.classList.toggle("active", b.dataset.period === period);
+    b.setAttribute("aria-selected", b.dataset.period === period ? "true" : "false");
+  });
+  document.getElementById("rev-label").textContent = revPeriodLabel(period, curr);
+  const grid = document.getElementById("metric-grid");
+  grid.classList.add("loading");
 
-  // Usa o valor realmente cobrado (confirmado ao concluir o atendimento)
-  // quando existir; cai no preço de tabela do serviço como estimativa
-  // só para atendimentos ainda não concluídos dessa forma.
-  const appointmentValue = (a) => a.final_price_cents ?? a.service?.price_cents ?? 0;
-
-  const completed = currentList.filter((a) => a.status === "completed");
-  const revenue = completed.reduce((sum, a) => sum + appointmentValue(a), 0);
-  const prevRevenue = previousList
-    .filter((a) => a.status === "completed")
-    .reduce((sum, a) => sum + appointmentValue(a), 0);
-
-  const cancelledOrNoShow = currentList.filter((a) => a.status === "cancelled" || a.status === "no_show").length;
-  const avgTicket = completed.length ? revenue / completed.length : 0;
-
-  let deltaHtml = `<span class="delta">sem dados do mês anterior</span>`;
-  if (prevRevenue > 0) {
-    const pct = Math.round(((revenue - prevRevenue) / prevRevenue) * 100);
-    const cls = pct >= 0 ? "positive" : "negative";
-    deltaHtml = `<span class="delta ${cls}">${pct >= 0 ? "+" : ""}${pct}% vs mês anterior</span>`;
+  let all;
+  try {
+    all = await fetchAppointmentsBetween(prev.start, curr.end);
+  } catch (e) {
+    grid.classList.remove("loading");
+    grid.innerHTML = `<div class="metric-card"><div class="label">Não foi possível carregar o faturamento.</div></div>`;
+    return;
   }
+  // Se o usuário trocou de período enquanto carregava, ignora este resultado
+  if (period !== adminState.revPeriod || curr.start !== revPeriodRange(adminState.revPeriod, adminState.revAnchor).start) return;
+  grid.classList.remove("loading");
 
-  document.getElementById("metric-grid").innerHTML = `
+  const currList = all.filter((a) => a.appointment_date >= curr.start && a.appointment_date <= curr.end);
+  const prevList = all.filter((a) => a.appointment_date >= prev.start && a.appointment_date <= prev.end);
+  const c = revSummarize(currList);
+  const p = revSummarize(prevList);
+
+  // Período em andamento: compara com o período anterior até o ponto equivalente a hoje
+  const todayIso = localIsoDate(new Date());
+  const partial = todayIso >= curr.start && todayIso < curr.end;
+  let pc = p;
+  if (partial) {
+    const cut = revAddDays(prev.start, revDaysBetween(curr.start, todayIso));
+    pc = revSummarize(prevList.filter((a) => a.appointment_date <= cut));
+  }
+  const lostRate = c.total ? Math.round((c.lost / c.total) * 100) : 0;
+
+  grid.innerHTML = `
     <div class="metric-card">
-      <div class="label">Faturamento (mês)</div>
-      <div class="value">${formatPrice(revenue)}</div>
-      ${deltaHtml}
+      <div class="label">Faturamento (${word})</div>
+      <div class="value">${formatPrice(c.revenue)}</div>
+      ${revDelta(c.revenue, pc.revenue, word, partial)}
     </div>
     <div class="metric-card">
       <div class="label">Atendimentos concluídos</div>
-      <div class="value">${completed.length}</div>
+      <div class="value">${c.count}</div>
+      ${revDelta(c.count, pc.count, word, partial)}
     </div>
     <div class="metric-card">
       <div class="label">Ticket médio</div>
-      <div class="value">${formatPrice(avgTicket)}</div>
+      <div class="value">${formatPrice(c.avg)}</div>
+      ${revDelta(c.avg, pc.avg, word, partial)}
     </div>
     <div class="metric-card">
       <div class="label">Cancelamentos / faltas</div>
-      <div class="value">${cancelledOrNoShow}</div>
+      <div class="value">${c.lost}</div>
+      <span class="delta">${c.total ? `${lostRate}% dos agendamentos` : "—"}</span>
+    </div>
+    <div class="metric-card">
+      <div class="label">Ainda agendado (previsto)</div>
+      <div class="value">${formatPrice(c.scheduledValue)}</div>
+      <span class="delta">${c.scheduledCount} horário${c.scheduledCount === 1 ? "" : "s"} confirmado${c.scheduledCount === 1 ? "" : "s"}</span>
     </div>`;
 
-  const byService = {};
-  completed.forEach((a) => {
-    const name = a.service?.name || "Outro";
-    byService[name] = (byService[name] || 0) + appointmentValue(a);
-  });
+  renderRevenueTrend(period, curr, prev, c, p);
+  renderServiceChart(c);
+  renderRevenueTable(period, curr, currList);
+}
 
-  const labels = Object.keys(byService);
-  const values = labels.map((l) => byService[l] / 100);
+// Agrupa em dias (mês) ou meses (trimestre/ano), alinhando com o período anterior
+function revBuckets(period, range, completed) {
+  const buckets = [];
+  if (period === "month") {
+    const days = new Date(range.year, range.firstMonth + 1, 0).getDate();
+    for (let d = 1; d <= days; d++) buckets.push({ label: String(d), value: 0 });
+    completed.forEach((a) => {
+      const day = Number(a.appointment_date.slice(8, 10));
+      buckets[day - 1].value += appointmentValue(a);
+    });
+  } else {
+    for (let m = range.firstMonth; m <= range.lastMonth; m++) buckets.push({ label: MONTH_SHORT[m], value: 0 });
+    completed.forEach((a) => {
+      const m = Number(a.appointment_date.slice(5, 7)) - 1;
+      buckets[m - range.firstMonth].value += appointmentValue(a);
+    });
+  }
+  return buckets;
+}
+
+function renderRevenueTrend(period, curr, prev, c, p) {
+  const word = REV_PERIOD_WORD[period];
+  const currB = revBuckets(period, curr, c.completed);
+  const prevB = revBuckets(period, prev, p.completed);
+
+  document.getElementById("rev-trend-title").textContent =
+    period === "month" ? "Faturamento por dia" : "Faturamento por mês";
+  document.getElementById("rev-legend").innerHTML = `
+    <span><i class="rev-swatch" style="background:${REV_GOLD}"></i>${escapeHtml(revPeriodLabel(period, curr))}</span>
+    <span><i class="rev-swatch rev-swatch-line" style="border-color:${REV_PREV}"></i>${word} anterior</span>`;
 
   if (revenueChartInstance) revenueChartInstance.destroy();
-
-  if (labels.length === 0) {
-    document.getElementById("revenue-chart").parentElement.innerHTML =
-      `<p class="empty-state">Nenhum atendimento concluído neste mês ainda.</p>`;
-    return;
-  }
-
   revenueChartInstance = new Chart(document.getElementById("revenue-chart"), {
-    type: "bar",
     data: {
-      labels,
+      labels: currB.map((b) => b.label),
       datasets: [
         {
-          data: values,
-          backgroundColor: "#A68A5B",
+          type: "bar",
+          label: revPeriodLabel(period, curr),
+          data: currB.map((b) => b.value / 100),
+          backgroundColor: REV_GOLD,
           borderRadius: 4,
-          maxBarThickness: 40,
+          maxBarThickness: period === "month" ? 14 : 36,
+          order: 2,
+        },
+        {
+          type: "line",
+          label: `${word} anterior`,
+          data: currB.map((_, i) => (prevB[i] ? prevB[i].value / 100 : null)),
+          borderColor: REV_PREV,
+          borderWidth: 2,
+          borderDash: [5, 4],
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointBackgroundColor: REV_PREV,
+          tension: 0,
+          order: 1,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => (period === "month" ? `Dia ${items[0].label}` : items[0].label),
+            label: (ctx) =>
+              `${ctx.dataset.label}: ${(ctx.parsed.y || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`,
+          },
+        },
+      },
       scales: {
         y: {
           beginAtZero: true,
-          ticks: { callback: (v) => "R$" + v, color: "#9A9280" },
+          ticks: { callback: (v) => revMoney(v), color: "#9A9280", maxRotation: 0, maxTicksLimit: 6 },
           grid: { color: "#EDE9DC" },
+          border: { display: false },
         },
-        x: { ticks: { color: "#6E6656", font: { size: 11 } }, grid: { display: false } },
+        x: {
+          ticks: { color: "#6E6656", font: { size: 11 }, autoSkip: true, maxRotation: 0 },
+          grid: { display: false },
+        },
       },
     },
+  });
+}
+
+function renderServiceChart(c) {
+  const wrap = document.getElementById("service-chart-wrap");
+  if (serviceChartInstance) {
+    serviceChartInstance.destroy();
+    serviceChartInstance = null;
+  }
+
+  const byService = {};
+  c.completed.forEach((a) => {
+    const name = a.service?.name || "Outro";
+    byService[name] = byService[name] || { value: 0, count: 0 };
+    byService[name].value += appointmentValue(a);
+    byService[name].count += 1;
+  });
+  const rows = Object.entries(byService).sort((a, b) => b[1].value - a[1].value);
+
+  if (rows.length === 0) {
+    wrap.innerHTML = `<p class="empty-state">Nenhum atendimento concluído neste período.</p>`;
+    return;
+  }
+  wrap.innerHTML = `<canvas id="service-chart"></canvas>`;
+
+  serviceChartInstance = new Chart(document.getElementById("service-chart"), {
+    type: "bar",
+    data: {
+      labels: rows.map((r) => r[0]),
+      datasets: [
+        {
+          label: "Faturamento",
+          data: rows.map((r) => r[1].value / 100),
+          backgroundColor: REV_GOLD,
+          borderRadius: 4,
+          maxBarThickness: 26,
+        },
+      ],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const r = rows[ctx.dataIndex][1];
+              return `${formatPrice(r.value)} · ${r.count} atendimento${r.count === 1 ? "" : "s"}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: { callback: (v) => revMoney(v), color: "#9A9280", maxRotation: 0, maxTicksLimit: 6 },
+          grid: { color: "#EDE9DC" },
+          border: { display: false },
+        },
+        y: { ticks: { color: "#6E6656", font: { size: 11 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+function renderRevenueTable(period, curr, currList) {
+  const wrap = document.getElementById("rev-table-wrap");
+  if (period === "month") {
+    wrap.innerHTML = "";
+    return;
+  }
+
+  const rows = [];
+  for (let m = curr.firstMonth; m <= curr.lastMonth; m++) {
+    const prefix = `${curr.year}-${String(m + 1).padStart(2, "0")}`;
+    rows.push({ month: m, ...revSummarize(currList.filter((a) => a.appointment_date.startsWith(prefix))) });
+  }
+  const total = revSummarize(currList);
+
+  wrap.innerHTML = `
+    <div class="portal-section-label">Resumo mês a mês</div>
+    <table class="admin-table rev-table">
+      <thead><tr><th>Mês</th><th>Faturamento</th><th>Atendimentos</th><th>Ticket médio</th><th>Cancel./faltas</th><th></th></tr></thead>
+      <tbody>
+        ${rows
+          .map(
+            (r) => `
+          <tr>
+            <td>${MONTH_NAMES[r.month]}</td>
+            <td>${formatPrice(r.revenue)}</td>
+            <td>${r.count}</td>
+            <td>${r.count ? formatPrice(r.avg) : "—"}</td>
+            <td>${r.lost}</td>
+            <td><button type="button" class="btn-icon" data-rev-month="${r.month}">Ver mês</button></td>
+          </tr>`
+          )
+          .join("")}
+        <tr class="rev-total">
+          <td>Total</td>
+          <td>${formatPrice(total.revenue)}</td>
+          <td>${total.count}</td>
+          <td>${total.count ? formatPrice(total.avg) : "—"}</td>
+          <td>${total.lost}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>`;
+
+  wrap.querySelectorAll("[data-rev-month]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      adminState.revPeriod = "month";
+      adminState.revAnchor = { year: curr.year, month: Number(btn.dataset.revMonth) };
+      loadAndRenderRevenue();
+      document.getElementById("admin-content").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   });
 }
 
