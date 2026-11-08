@@ -1494,47 +1494,78 @@ function normalizeSearch(value) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+const INACTIVE_DAYS = 45;
+
+function clientIsInactive(c) {
+  return (
+    c.days_since_last_visit != null &&
+    c.days_since_last_visit > INACTIVE_DAYS &&
+    !c.next_appointment_date
+  );
+}
+
+function whatsappLink(client) {
+  let digits = String(client.customer_phone || "").replace(/\D/g, "");
+  if (digits.length === 10 || digits.length === 11) digits = `55${digits}`;
+  const firstName = String(client.customer_name || "").trim().split(/\s+/)[0] || "";
+  const text =
+    `Olá${firstName ? `, ${firstName}` : ""}! Tudo bem? Sentimos sua falta aqui na gmatiasbeauty 💛 ` +
+    `Que tal agendar seu próximo horário? https://www.gmatiasbeauty.com.br/agendar.html`;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
 async function renderClientesTab() {
   const content = document.getElementById("admin-content");
   content.innerHTML = `
     <h2>Clientes</h2>
-    <p class="admin-sub">Histórico por cliente. Destacamos quem não retorna há mais de 45 dias e aniversariantes dos próximos 14 dias.</p>
+    <p class="admin-sub">Uma linha por cliente (agrupado pelo telefone). Destacamos quem não retorna há mais de ${INACTIVE_DAYS} dias e aniversariantes dos próximos 14 dias.</p>
     <div class="admin-toolbar">
-      <input type="search" id="clients-search" class="clients-search" placeholder="Buscar cliente pelo nome…" />
+      <input type="search" id="clients-search" class="clients-search" placeholder="Buscar por nome ou telefone…" />
+      <button type="button" class="inactive-btn" id="inactive-btn" disabled>
+        ⏰ Sem retorno há +${INACTIVE_DAYS} dias <span class="inactive-count" id="inactive-count">…</span>
+      </button>
     </div>
     <table class="admin-table">
-      <thead><tr><th>Cliente</th><th>Contato</th><th>Aniversário</th><th>Atendimentos</th><th>Último atendimento</th><th></th><th></th></tr></thead>
-      <tbody id="clients-tbody"><tr><td colspan="7">Carregando…</td></tr></tbody>
+      <thead><tr><th>Cliente</th><th>Contato</th><th>Aniversário</th><th>Agendamentos</th><th>Última visita</th><th>Próximo</th><th></th><th></th></tr></thead>
+      <tbody id="clients-tbody"><tr><td colspan="8">Carregando…</td></tr></tbody>
     </table>`;
 
   const { data, error } = await supabaseClient.rpc("get_client_summary");
   const tbody = document.getElementById("clients-tbody");
   const searchInput = document.getElementById("clients-search");
+  const inactiveBtn = document.getElementById("inactive-btn");
+  const inactiveCount = document.getElementById("inactive-count");
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="7">Não foi possível carregar os clientes.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8">Não foi possível carregar os clientes.</td></tr>`;
+    inactiveCount.textContent = "—";
     return;
   }
 
   if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7">Nenhum cliente ainda.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8">Nenhum cliente ainda.</td></tr>`;
+    inactiveCount.textContent = "0";
     return;
   }
 
   const allClients = data;
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 45);
+  const inactiveClients = allClients
+    .filter(clientIsInactive)
+    .sort((a, b) => b.days_since_last_visit - a.days_since_last_visit);
+
+  inactiveCount.textContent = String(inactiveClients.length);
+  inactiveBtn.disabled = false;
+  inactiveBtn.addEventListener("click", () => openInactiveClientsModal(inactiveClients));
 
   function renderRows(list) {
     if (list.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7">Nenhum cliente encontrado para essa busca.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8">Nenhum cliente encontrado para essa busca.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = list
       .map((c, idx) => {
-        const lastDate = c.last_appointment_date ? new Date(c.last_appointment_date) : null;
-        const inactive = lastDate && lastDate < cutoff;
+        const inactive = clientIsInactive(c);
         const daysUntil = daysUntilBirthday(c.birthday);
         const isSoonBirthday = daysUntil !== null && daysUntil <= 14;
 
@@ -1544,9 +1575,10 @@ async function renderClientesTab() {
           <td>${escapeHtml(c.customer_phone)}${c.customer_email ? `<br><span style="color:var(--color-text-soft); font-size:0.82rem;">${escapeHtml(c.customer_email)}</span>` : ""}</td>
           <td>${c.birthday ? formatBirthdayShort(c.birthday) : "—"}</td>
           <td>${c.total_appointments}</td>
-          <td>${formatDateBR(c.last_appointment_date)}</td>
+          <td>${c.last_visit_date ? formatDateBR(c.last_visit_date) : "—"}</td>
+          <td>${c.next_appointment_date ? formatDateBR(c.next_appointment_date) : "—"}</td>
           <td>
-            ${inactive ? `<span class="badge off">Sem retorno</span>` : ""}
+            ${inactive ? `<span class="badge off">Sem retorno · ${c.days_since_last_visit}d</span>` : ""}
             ${isSoonBirthday ? `<span class="badge on">🎂 ${daysUntil === 0 ? "Hoje!" : `em ${daysUntil}d`}</span>` : ""}
           </td>
           <td><button type="button" class="btn-icon" data-history="${idx}">Histórico</button></td>
@@ -1564,11 +1596,65 @@ async function renderClientesTab() {
   renderRows(allClients);
 
   searchInput.addEventListener("input", () => {
-    const term = normalizeSearch(searchInput.value.trim());
+    const raw = searchInput.value.trim();
+    const term = normalizeSearch(raw);
+    const digits = raw.replace(/\D/g, "");
     const filtered = term
-      ? allClients.filter((c) => normalizeSearch(c.customer_name).includes(term))
+      ? allClients.filter(
+          (c) =>
+            normalizeSearch(c.customer_name).includes(term) ||
+            (digits.length >= 3 && String(c.customer_phone || "").replace(/\D/g, "").includes(digits))
+        )
       : allClients;
     renderRows(filtered);
+  });
+}
+
+function openInactiveClientsModal(clients) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal modal-wide">
+      <button type="button" class="modal-close" aria-label="Fechar">✕</button>
+      <h2>Sem retorno há mais de ${INACTIVE_DAYS} dias</h2>
+      <p class="admin-sub" style="margin:-12px 0 18px; text-align:center;">
+        ${clients.length} cliente${clients.length === 1 ? "" : "s"} sem visita e sem horário marcado · quem está há mais tempo aparece primeiro
+      </p>
+      ${
+        clients.length === 0
+          ? `<p class="empty-state">Ninguém por aqui — todas as clientes voltaram ou já têm horário marcado. 🎉</p>`
+          : `<div class="inactive-list">
+              ${clients
+                .map(
+                  (c, idx) => `
+                <div class="inactive-row">
+                  <div class="inactive-info">
+                    <strong>${escapeHtml(c.customer_name)}</strong>
+                    <span>${escapeHtml(c.customer_phone)} · ${c.total_appointments} agendamento${c.total_appointments == 1 ? "" : "s"}</span>
+                    <span>Última visita: ${formatDateBR(c.last_visit_date)}</span>
+                  </div>
+                  <span class="inactive-days">${c.days_since_last_visit} dias</span>
+                  <div class="inactive-actions">
+                    <a class="btn-icon inactive-wa" href="${whatsappLink(c)}" target="_blank" rel="noopener">WhatsApp</a>
+                    <button type="button" class="btn-icon" data-inactive-history="${idx}">Histórico</button>
+                  </div>
+                </div>`
+                )
+                .join("")}
+            </div>`
+      }
+    </div>`;
+  document.body.appendChild(overlay);
+
+  function close() {
+    overlay.remove();
+  }
+  overlay.querySelector(".modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  overlay.querySelectorAll("[data-inactive-history]").forEach((btn) => {
+    btn.addEventListener("click", () => openClientHistoryModal(clients[Number(btn.dataset.inactiveHistory)]));
   });
 }
 
@@ -1597,7 +1683,7 @@ async function openClientHistoryModal(client) {
   const { data, error } = await supabaseClient
     .from("appointments")
     .select("*, service:services(name, price_cents)")
-    .eq("customer_phone", client.customer_phone)
+    .in("customer_phone", client.phones && client.phones.length ? client.phones : [client.customer_phone])
     .order("appointment_date", { ascending: false })
     .order("start_time", { ascending: false });
 

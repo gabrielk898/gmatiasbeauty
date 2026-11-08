@@ -1897,3 +1897,65 @@ button {
   .agenda-stats { grid-template-columns: repeat(2, 1fr); }
   .agenda-overview-head { flex-direction: column; }
 }
+
+/* ---------- Clientes: botão e pop-up "sem retorno" ---------- */
+.inactive-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  padding: 9px 16px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.inactive-btn:hover:not(:disabled) { border-color: var(--color-gold); background: #FBF9F3; }
+.inactive-btn:disabled { opacity: 0.6; cursor: default; }
+
+.inactive-count {
+  min-width: 24px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: #F1E1DC;
+  color: var(--color-danger);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.inactive-list { display: flex; flex-direction: column; gap: 8px; }
+
+.inactive-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.inactive-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.inactive-info strong { font-size: 0.92rem; color: var(--color-text); }
+.inactive-info span { font-size: 0.78rem; color: var(--color-text-muted); }
+
+.inactive-days {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--color-danger);
+  white-space: nowrap;
+}
+
+.inactive-actions { display: flex; gap: 6px; }
+.inactive-actions .btn-icon { text-decoration: none; white-space: nowrap; }
+.inactive-wa { color: var(--color-success); border-color: #C9D8C2; }
+
+@media (max-width: 560px) {
+  .inactive-row { flex-wrap: wrap; }
+  .inactive-actions { width: 100%; }
+}
+.admin-content:has(#clients-tbody) { max-width: 1200px; }
+#clients-tbody td { white-space: nowrap; }
+#clients-tbody .badge { white-space: nowrap; margin: 2px 0; }
